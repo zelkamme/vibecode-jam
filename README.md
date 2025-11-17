@@ -17,7 +17,8 @@ vibecode-jam/
     │   ├── LoginPage.jsx
     │   ├── HrDashboard.jsx
     │   └── ... (все остальные компоненты интерфейса)
-    └── package.json```
+    └── package.json
+```
 
 ## Запуск Моей Части
 
