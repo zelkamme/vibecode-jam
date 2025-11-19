@@ -4,119 +4,122 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
-// Импортируем все наши страницы/компоненты
+// Импорт страниц
 import LoginPage from './LoginPage';
 import RegistrationPage from './RegistrationPage';
 import HrDashboard from './HrDashboard';
 import HrReport from './HrReport';
 import WelcomeScreen from './WelcomeScreen';
-import LevelSelection from './LevelSelection';
+// LevelSelection удален, он больше не нужен
 import PsyTest from './PsyTest';
 import TheoryTest from './TheoryTest';
 import CodingInterface from './CodingInterface';
 import ReportScreen from './ReportScreen';
 import GlareEffect from './GlareEffect';
+import TaskBuilder from './TaskBuilder';
 
-// --- Компонент-обертка для защиты роутов ---
-// Он проверяет, есть ли нужная роль в localStorage. Если нет - кидает на /login
+// --- Защита роутов ---
 function ProtectedRoute({ children, allowedRoles }) {
   const userRole = localStorage.getItem('userRole');
+  // Простая проверка: если роль есть в списке разрешенных, пускаем
   if (allowedRoles.includes(userRole)) {
     return children;
   }
   return <Navigate to="/login" replace />;
 }
 
-// --- Компонент для редиректа с главной страницы ---
+// --- Редирект с корня ---
 function RootRedirect() {
   const userRole = localStorage.getItem('userRole');
-  if (userRole === 'hr') {
-    return <Navigate to="/hr/dashboard" replace />;
-  }
-  if (userRole === 'candidate') {
-    return <Navigate to="/interview" replace />;
-  }
+  if (userRole === 'hr') return <Navigate to="/hr/dashboard" replace />;
+  if (userRole === 'candidate') return <Navigate to="/interview" replace />;
   return <Navigate to="/login" replace />;
 }
 
-// --- ========================================================== ---
-// --- КОМПОНЕНТ, КОТОРЫЙ ОПИСЫВАЕТ ВЕСЬ ПОТОК КАНДИДАТА ---
-// --- ========================================================== ---
+// --- ПОТОК КАНДИДАТА ---
 function CandidateFlow() {
+  // Начальное состояние - Welcome Screen
   const [appState, setAppState] = useState('welcome');
-  const [userData, setUserData] = useState({});
+  
+  // Получаем сохраненный при регистрации уровень
+  // Это нужно, чтобы CodingInterface знал, какую задачу просить у бэка
+  const candidateLevel = localStorage.getItem('candidateLevel') || 'Junior';
+  
+  const [userData, setUserData] = useState({
+    level: candidateLevel,
+    telemetry: {}
+  });
 
-  const handleLevelSelect = (level) => {
-    setUserData(prev => ({ ...prev, level }));
+  // Обработчик кнопки "Начать" на WelcomeScreen
+  const handleStart = () => {
+    // Сразу переходим к Психологическому тесту (или Theory, как настроишь)
+    // Шаг выбора уровня пропускается
     setAppState('psy_test');
   };
 
+  // Завершение всего интервью
   const handleFinishInterview = (telemetryData) => {
-    console.log("Интервью завершено, данные телеметрии:", telemetryData);
-
-    const candidateId = localStorage.getItem('currentCandidateId');
-    if (!candidateId) {
-      console.error("Не удалось найти ID текущего кандидата!");
-      setAppState('report');
-      return;
-    }
-
-    const db = JSON.parse(localStorage.getItem('vibecode_candidates_db')) || [];
-    const candidateIndex = db.findIndex(c => c.id == candidateId);
+    console.log("Финиш. Телеметрия:", telemetryData);
     
-    if (candidateIndex !== -1) {
-      // Имитация расчета Integrity Score, как это делал бы бэкенд
-      let score = 100;
-      score -= (telemetryData.focusLost || 0) * 5;
-      score -= (telemetryData.mouseLeftWindow || 0) * 2;
-      score -= (telemetryData.largePastes || 0) * 15;
-      if (score < 0) score = 0;
-      telemetryData.finalScore = score;
-      
-      // Обновляем данные кандидата в "базе"
-      db[candidateIndex].status = 'Завершено';
-      db[candidateIndex].telemetry = telemetryData;
-      db[candidateIndex].score = `${score}/100`; 
-      
-      // Сохраняем обновленную базу обратно в localStorage
-      localStorage.setItem('vibecode_candidates_db', JSON.stringify(db));
-      console.log("Данные кандидата обновлены в DB.");
-    }
-    
+    // Обновляем локальный стейт (для отображения в ReportScreen, если нужно)
     setUserData(prev => ({ ...prev, telemetry: telemetryData }));
+    
+    // Переходим к экрану отчета
     setAppState('report');
   };
   
+  // Логика переключения экранов
   const renderCurrentCandidateState = () => {
     switch (appState) {
       case 'welcome':
-        return <div className="glass-card"><WelcomeScreen onStart={() => setAppState('level_selection')} /></div>;
-      case 'level_selection':
-        return <div className="glass-card"><LevelSelection onSelect={handleLevelSelect} /></div>;
+        return (
+          <div className="glass-card">
+            <WelcomeScreen onStart={handleStart} />
+          </div>
+        );
+      
       case 'psy_test':
-        return <PsyTest onComplete={() => setAppState('theory_test')} />;
+        return (
+          <PsyTest 
+            onComplete={() => setAppState('theory_test')} 
+          />
+        );
+        
       case 'theory_test':
-        return <TheoryTest onComplete={() => setAppState('coding_test')} />;
+        return (
+          <TheoryTest 
+            onComplete={() => setAppState('coding_test')} 
+          />
+        );
+        
+      // CodingInterface рендерится отдельно (ниже), чтобы занимать весь экран
+      
       case 'report':
         const handleRestart = () => {
-          // Выход: очищаем данные текущей сессии и отправляем на логин
-          localStorage.removeItem('currentCandidateId');
-          localStorage.removeItem('userRole');
+          localStorage.clear();
           window.location.href = '/login';
         }
         return <ReportScreen onRestart={handleRestart} />;
+        
       default:
-        return <WelcomeScreen onStart={() => setAppState('level_selection')} />;
+        return <WelcomeScreen onStart={handleStart} />;
     }
   };
 
-  // Главная логика отображения для потока кандидата
+  // Если этап "Кодинг" - рендерим без centered-container (на весь экран)
   if (appState === 'coding_test') {
-    return <CodingInterface userData={userData} onComplete={handleFinishInterview} />;
-  } else {
+    return (
+      <CodingInterface 
+        userData={userData} 
+        onComplete={handleFinishInterview} 
+      />
+    );
+  } 
+  
+  // Для всех остальных этапов - стандартный лейаут с центрированием
+  else {
     return (
       <div className="app-wrapper">
-        {/* БЛИКИ НА ФОНЕ */}
         <GlareEffect /> 
         <div className="centered-container">
           {renderCurrentCandidateState()}
@@ -126,23 +129,29 @@ function CandidateFlow() {
   }
 }
 
-// --- ========================================================== ---
-// --- ГЛАВНЫЙ КОМПОНЕНТ APP, КОТОРЫЙ ТЕПЕРЬ ТОЛЬКО МАРШРУТИЗАТОР ---
-// --- ========================================================== ---
+// --- ГЛАВНЫЙ РОУТЕР ---
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* === Публичные роуты === */}
+        {/* Публичные страницы */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegistrationPage />} />
 
-        {/* === Роуты для HR (защищенные) === */}
+        {/* HR Зона */}
         <Route 
           path="/hr/dashboard" 
           element={
             <ProtectedRoute allowedRoles={['hr']}>
               <HrDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/hr/create-task" 
+          element={
+            <ProtectedRoute allowedRoles={['hr']}>
+              <TaskBuilder />
             </ProtectedRoute>
           } 
         />
@@ -155,7 +164,7 @@ function App() {
           } 
         />
         
-        {/* === Роут для Кандидата (защищенный) === */}
+        {/* Кандидат Зона */}
         <Route 
           path="/interview" 
           element={
@@ -165,17 +174,9 @@ function App() {
           } 
         />
         
-        {/* === Главный роут ("/") для автоматического редиректа === */}
-        <Route 
-          path="/" 
-          element={<RootRedirect />} 
-        />
-        
-        {/* === Роут-заглушка на случай, если ничего не найдено === */}
-        <Route 
-          path="*" 
-          element={<Navigate to="/" replace />}
-        />
+        {/* Редиректы */}
+        <Route path="/" element={<RootRedirect />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

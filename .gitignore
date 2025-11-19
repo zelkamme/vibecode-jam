@@ -15,3 +15,20 @@ yarn-error.log*
 .idea/
 .vscode/
 .DS_Store
+
+# Frontend мусор
+node_modules/
+dist/
+.env
+.DS_Store
+
+# Backend мусор
+__pycache__/
+*.pyc
+venv/
+.venv/
+vibecode.db
+
+# IDE мусор
+.vscode/
+.idea/

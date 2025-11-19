@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "dockerode": "^4.0.9",
+    "express": "^5.1.0",
+    "react-icons": "^5.5.0",
+    "uuid": "^13.0.0"
+  }
+}

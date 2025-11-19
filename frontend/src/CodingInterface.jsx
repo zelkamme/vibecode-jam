@@ -1,75 +1,94 @@
+// frontend/src/CodingInterface.jsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown'; // <-- ИМПОРТ ДЛЯ MD
 
 function CodingInterface({ onComplete }) {
-  const [code, setCode] = useState('# Введите ваш код на Python здесь\ndef reverse_string(s):\n  return s[::-1]\n');
+  const [code, setCode] = useState('# Загрузка задачи...\n');
   const [output, setOutput] = useState({ stdout: '', stderr: '' });
-  const [chatHistory, setChatHistory] = useState([
-    { sender: 'ai', text: 'Здравствуйте! Напишите функцию для разворота строки.' }
-  ]);
+  const [chatHistory, setChatHistory] = useState([]);
   const [userInput, setUserInput] = useState('');
+  const [taskId, setTaskId] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState('');
 
-  // --- ШПИОНСКИЕ ДАННЫЕ ---
   const telemetry = useRef({
-    focusLost: 0,      // Альт-табы
-    mouseLeftWindow: 0, // Уход мыши на второй монитор
-    largePastes: 0,    // Копипаста
-    codeHistory: []    // История версий кода для анализа стиля
+    focusLost: 0,
+    mouseLeftWindow: 0,
+    largePastes: 0,
+    codeHistory: []
   });
 
-  // Сохраняем первую версию кода при загрузке
   useEffect(() => {
-    telemetry.current.codeHistory.push(code);
-  }, []);
+    const fetchTask = async () => {
+      const savedLevel = localStorage.getItem('candidateLevel') || 'Intern';
+      setDebugInfo(savedLevel);
+      
+      try {
+        const response = await axios.get(`http://localhost:8000/api/task/coding/${savedLevel}`);
+        const task = response.data;
+        setTaskId(task.id);
 
-  // --- СЛУШАТЕЛИ СОБЫТИЙ ---
-  useEffect(() => {
-    // 1. Потеря фокуса (Alt-Tab)
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        telemetry.current.focusLost++;
-        console.warn('Violation: Focus Lost');
+        if (task.id === 0) {
+             setCode(`# ${task.description}`);
+             setChatHistory([{ sender: 'ai', text: `**Статус:** ${task.title}\n\n${task.description}` }]);
+        } else {
+            let initialCode = "# Напишите ваше решение здесь\n";
+            if (task.files && Array.isArray(task.files)) {
+                const mainFile = task.files.find(f => f.name === 'main.py');
+                if (mainFile) initialCode = mainFile.content;
+            }
+            setCode(initialCode);
+            telemetry.current.codeHistory.push(initialCode);
+            
+            // ВОТ ТУТ ТЕКСТ БУДЕТ С MD
+            setChatHistory([
+              { 
+                sender: 'ai', 
+                text: `**Задача:** ${task.title}\n\n${task.description}` 
+              }
+            ]);
+        }
+
+      } catch (error) {
+        console.error("Ошибка:", error);
+        setCode("# Ошибка сети.");
+      } finally {
+        setLoading(false);
       }
     };
 
-    // 2. Уход мыши за пределы окна (Второй монитор)
-    const handleMouseLeave = () => {
-      telemetry.current.mouseLeftWindow++;
-      console.warn('Violation: Mouse left window');
-    };
+    fetchTask();
+  }, []);
 
+  // --- АНТИ-ЧИТ ---
+  useEffect(() => {
+    const handleVisibilityChange = () => { if (document.hidden) telemetry.current.focusLost++; };
+    const handleMouseLeave = () => { telemetry.current.mouseLeftWindow++; };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.body.addEventListener('mouseleave', handleMouseLeave);
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.body.removeEventListener('mouseleave', handleMouseLeave);
     };
   }, []);
 
-  // 3. Детектор Копипасты (Monaco Event)
-  const handleEditorPaste = (value, event) => {
-    // В Monaco onPaste немного сложнее, но мы можем просто следить за резким изменением длины текста
-    // Проще сделать через onChange, если разница длин > 50 символов
-  };
-
-  // Альтернативный детектор копипасты через сравнение длины
   const handleCodeChange = (newCode) => {
-    const lengthDiff = newCode.length - code.length;
-    if (lengthDiff > 50) {
-      telemetry.current.largePastes++;
-      console.warn('Violation: Large Paste Detected');
-    }
+    if (newCode.length - code.length > 50) telemetry.current.largePastes++;
     setCode(newCode);
   };
 
   const handleRunCode = async () => {
-    // Сохраняем версию кода перед запуском
     telemetry.current.codeHistory.push(code);
-
+    setOutput({ stdout: 'Запуск контейнера...', stderr: '' });
     try {
-      const response = await axios.post('http://localhost:8000/api/run-code', { code });
+      const response = await axios.post('http://localhost:8000/api/run-code', {
+        code: code,
+        language: 'python',
+        task_id: taskId
+      });
       setOutput(response.data);
     } catch (error) {
       setOutput({ stdout: '', stderr: `Ошибка: ${error.message}` });
@@ -83,38 +102,47 @@ function CodingInterface({ onComplete }) {
     setChatHistory(prev => [...prev, newUserMessage]);
     setUserInput('');
     try {
-      const response = await axios.post('http://localhost:8000/api/chat', { message: userInput, history: chatHistory });
+      const response = await axios.post('http://localhost:8000/api/chat', {
+        message: userInput,
+        history: chatHistory
+      });
       setChatHistory(prev => [...prev, response.data]);
     } catch (error) {
-       setChatHistory(prev => [...prev, { sender: 'ai', text: 'Ошибка AI' }]);
+       setChatHistory(prev => [...prev, { sender: 'ai', text: 'AI недоступен.' }]);
     }
   };
 
-  // --- ФИНАЛЬНАЯ ОТПРАВКА ---
   const handleFinish = async () => {
-    // Сохраняем финальную версию
-    telemetry.current.codeHistory.push(code);
+    const currentUserId = localStorage.getItem('currentCandidateId');
+    if (!currentUserId) {
+        alert("Ошибка: ID пользователя не найден. Перезайдите.");
+        onComplete({ finalScore: 0 });
+        return;
+    }
 
     try {
-      // Отправляем ВСЁ на бэкенд для анализа
-      console.log("Отправка телеметрии...", telemetry.current);
-      
-      // В реальном проекте ты бы отправил это на бэкенд:
-      // await axios.post('http://localhost:8000/api/analyze-integrity', telemetry.current);
-      
-      // Но пока просто передаем управление в App.jsx
-      onComplete(telemetry.current); 
-    } catch (e) {
-      console.error(e);
-      onComplete(telemetry.current);
+        const response = await axios.post('http://localhost:8000/api/analyze-integrity', {
+            user_id: parseInt(currentUserId),
+            focusLost: telemetry.current.focusLost,
+            mouseLeftWindow: telemetry.current.mouseLeftWindow,
+            largePastes: telemetry.current.largePastes,
+            codeHistory: telemetry.current.codeHistory
+        });
+        onComplete(response.data); 
+    } catch (error) {
+        console.error("Ошибка сохранения:", error);
+        alert("Не удалось сохранить результат в БД. Проверьте консоль.");
+        onComplete({ finalScore: 0, ...telemetry.current });
     }
   };
+
+  if (loading) return <div className="glass-card" style={{margin: '2rem'}}><h2>Загрузка...</h2></div>;
 
   return (
     <div className="main-container">
       <div className="left-panel">
         <div className="controls">
-          <h3>Редактор кода</h3>
+          <h3>Редактор ({debugInfo})</h3>
           <div>
             <button onClick={handleRunCode} className="run-button">▶ Запустить</button>
             <button onClick={handleFinish} className="finish-button">Завершить</button>
@@ -122,21 +150,31 @@ function CodingInterface({ onComplete }) {
         </div>
         <div className="editor-container">
           <Editor 
-            height="100%" 
-            language="python" 
-            theme="vs-dark" 
-            value={code} 
-            onChange={handleCodeChange} 
+            height="100%" language="python" theme="vs-dark" 
+            value={code} onChange={handleCodeChange}
+            options={{ fontSize: 14, minimap: { enabled: false } }}
           />
         </div>
-        <div className="output-container"><h3>Вывод:</h3>{output.stdout && <pre className="stdout">{output.stdout}</pre>}{output.stderr && <pre className="stderr">{output.stderr}</pre>}</div>
+        <div className="output-container">
+          <h3>Терминал:</h3>
+          {output.stdout && <pre className="stdout">{output.stdout}</pre>}
+          {output.stderr && <pre className="stderr">{output.stderr}</pre>}
+        </div>
       </div>
+      
       <div className="right-panel">
         <div className="chat-container">
-          <div className="chat-messages">{chatHistory.map((msg, index) => ( <div key={index} className={`message ${msg.sender}`}>{msg.text}</div> ))}</div>
+          <div className="chat-messages">
+            {chatHistory.map((msg, index) => (
+              <div key={index} className={`message ${msg.sender}`}>
+                {/* ИСПОЛЬЗУЕМ REACT-MARKDOWN */}
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
+              </div>
+            ))}
+          </div>
           <form className="chat-input" onSubmit={handleSendMessage}>
-            <input type="text" placeholder="Ваше сообщение..." value={userInput} onChange={(e) => setUserInput(e.target.value)}/>
-            <button type="submit">Отправить</button>
+            <input type="text" placeholder="Вопрос..." value={userInput} onChange={(e) => setUserInput(e.target.value)}/>
+            <button type="submit">Send</button>
           </form>
         </div>
       </div>

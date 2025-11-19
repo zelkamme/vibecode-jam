@@ -504,3 +504,204 @@ tr:last-child td { border-bottom: none; }
     transform: rotate(360deg);
   }
 }
+/* frontend/src/App.css */
+
+/* ... всё старое ... */
+
+/* СТИЛИ ДЛЯ КОНСТРУКТОРА ЗАДАЧ */
+.glass-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.8rem;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+  font-size: 1rem;
+}
+.glass-input-small {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  width: 100px;
+}
+
+.env-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.env-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid transparent;
+  padding: 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.env-card:hover { background: rgba(255,255,255,0.1); }
+.env-card.active {
+  background: rgba(0, 161, 224, 0.2);
+  border-color: #00A1E0;
+}
+
+.lib-tag {
+  display: inline-block;
+  background: rgba(0,0,0,0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  margin-right: 4px;
+  margin-top: 4px;
+  color: #aaa;
+}
+select.glass-input option {
+  background-color: #1e1e1e; /* Темный фон для выпадашки */
+  color: white; /* Белый текст */
+  padding: 10px;
+}
+/* --- ФИКС РАЗМЕРОВ И КОМПАКТНОСТЬ --- */
+
+/* --- ФИКС РАЗМЕРОВ: ШИРОКИЙ ЭКРАН --- */
+
+.task-builder-container {
+  display: grid;
+  /* 
+     320px - фиксируем левую панель (она узкая и компактная).
+     1fr - правая панель (код) занимает ВСЁ остальное место.
+  */
+  grid-template-columns: 480px 1fr; 
+  gap: 2rem;
+  
+  /* Высота почти во весь экран */
+  height: 90vh; 
+  
+  /* Растягиваем контейнер по ширине, но оставляем отступы по краям */
+  width: 95%; 
+  max-width: 1800px; /* Ограничение только для гигантских 4k мониторов */
+  
+  margin: 0 auto; /* Центрируем */
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  /* Уменьшаем отступы между элементами, чтобы убрать скролл */
+  gap: 0.8rem; 
+  height: 100%;
+  overflow-y: auto; /* Скролл останется только если экран совсем маленький */
+  padding-right: 0.5rem;
+}
+
+/* Делаем инпуты и селекты компактнее */
+.glass-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  
+  /* Уменьшаем внутренние отступы */
+  padding: 0.5rem; 
+  border-radius: 6px;
+  
+  /* Подтягиваем инпут ближе к названию */
+  margin-top: 0.2rem; 
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+/* Уменьшаем высоту списка окружений */
+.env-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  max-height: 110px; /* Ограничиваем высоту */
+  overflow-y: auto;
+}
+
+.env-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid transparent;
+  padding: 0.5rem; /* Компактнее внутри */
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* Текстарии (описание и эталонный ответ) делаем поменьше */
+textarea.glass-input {
+  min-height: 80px !important;
+  height: 80px !important;
+}
+
+/* Лейблы делаем чуть меньше */
+label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%; /* На всю высоту */
+  overflow-y: auto; /* Если настроек много - скроллим */
+  padding-right: 0.5rem; /* Отступ для скроллбара */
+}
+/* Чтобы кнопка всегда была внизу, но не улетала */
+.save-task-btn {
+  margin-top: auto; /* Прижимаем к низу */
+  width: 100%;
+}
+.file-tab {
+  padding: 0.5rem 1rem;
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+.file-tab.active {
+  background: #1e1e1e; /* Цвет фона редактора Monaco */
+  opacity: 1;
+  border-top: 2px solid #00A1E0;
+}
+.delete-icon { color: #ff5555; margin-left: 5px; }
+.delete-icon:hover { color: #ff0000; }
+.icon-button {
+  background: #00A1E0; border: none; color: white;
+  border-radius: 4px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.task-type-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 1rem;
+}
+
+.type-tab {
+  flex: 1;
+  padding: 8px;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #aaa;
+  transition: all 0.2s;
+}
+
+.type-tab.active {
+  background: var(--t1-blue);
+  color: white;
+  font-weight: bold;
+}
