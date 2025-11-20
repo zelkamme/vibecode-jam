@@ -8,13 +8,21 @@ from typing import List, Optional
 import httpx
 import json
 import logging
+from contextlib import asynccontextmanager
 
-from database import create_db_and_tables, get_session, engine
-from models import User, Question, Report, TestSession, Vacancy
+from backend.database import create_db_and_tables, get_session, engine
+from backend.models import User, Question, Report, TestSession, Vacancy
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI()
+#app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()   # стартовый хук
+    yield                     # после этого запустится сервер
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,10 +32,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
-    # НИКАКИХ ВОПРОСОВ НЕ СОЗДАЕМ. ТОЛЬКО ТАБЛИЦЫ.
+#@app.on_event("startup")
+#def on_startup():
+#    create_db_and_tables()
+#    # НИКАКИХ ВОПРОСОВ НЕ СОЗДАЕМ. ТОЛЬКО ТАБЛИЦЫ.
+
+
 
 # --- MODELS ---
 class RegisterRequest(BaseModel):
