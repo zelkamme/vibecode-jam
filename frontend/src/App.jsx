@@ -10,13 +10,14 @@ import RegistrationPage from './RegistrationPage';
 import HrDashboard from './HrDashboard';
 import HrReport from './HrReport';
 import WelcomeScreen from './WelcomeScreen';
-// LevelSelection удален, он больше не нужен
+import VacancyList from './VacancyList';
 import PsyTest from './PsyTest';
 import TheoryTest from './TheoryTest';
 import CodingInterface from './CodingInterface';
 import ReportScreen from './ReportScreen';
 import GlareEffect from './GlareEffect';
 import TaskBuilder from './TaskBuilder';
+import VacancyBuilder from './VacancyBuilder';
 
 // --- Защита роутов ---
 function ProtectedRoute({ children, allowedRoles }) {
@@ -147,8 +148,33 @@ function App() {
             </ProtectedRoute>
           } 
         />
+        
+        <Route 
+          path="/hr/vacancies" 
+          element={
+            <ProtectedRoute allowedRoles={['hr']}>
+              <VacancyList />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/hr/create-vacancy" 
+          element={
+            <ProtectedRoute allowedRoles={['hr']}>
+              <VacancyBuilder />
+            </ProtectedRoute>
+          } 
+        />
         <Route 
           path="/hr/create-task" 
+          element={
+            <ProtectedRoute allowedRoles={['hr']}>
+              <TaskBuilder />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/hr/edit-task/:taskId" 
           element={
             <ProtectedRoute allowedRoles={['hr']}>
               <TaskBuilder />
