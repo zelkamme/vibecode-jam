@@ -15,8 +15,8 @@ from docker import from_env
 from docker.client import DockerClient
 
 # DB imports
-from database import create_db_and_tables, get_session
-from models import User, Question, Report, TestSession, Vacancy
+from backend.database import create_db_and_tables, get_session
+from backend.models import User, Question, Report, TestSession, Vacancy
 
 # Создаем папку для загрузок, если нет
 UPLOAD_DIR = "uploads"
