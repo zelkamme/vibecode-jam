@@ -1,89 +1,128 @@
-// frontend/src/TaskBuilder.jsx
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
 import { FaPlus, FaTrash, FaFile, FaArrowLeft } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
-
-// Список доступных Docker-окружений
-const ENVIRONMENTS = [
-  { id: 'basic', name: 'Python Basic', description: 'Чистый Python 3.11 (Standard Library)', libs: ['sys', 'math', 'random'] },
-  { id: 'data-science', name: 'Python Data Science', description: 'Pandas, NumPy included', libs: ['pandas', 'numpy'] },
-];
+import { useNavigate, useParams } from 'react-router-dom';
 
 function TaskBuilder() {
   const navigate = useNavigate();
-  const [taskType, setTaskType] = useState('coding'); // 'coding' | 'theory'
+  const { taskId } = useParams();
+  const isEditMode = !!taskId;
+
+  const [taskType, setTaskType] = useState('coding');
   const [loading, setLoading] = useState(false);
 
-  // Основные данные задачи
   const [task, setTask] = useState({
     title: '',
     description: '',
-    referenceAnswer: '', // Для теории
+    referenceAnswer: '', // Для теории (текст) и для Psy (JSON строка)
     level: 'Intern',
-    envId: 'basic'       // Для кодинга
+    envId: 'basic'
   });
 
-  // Файлы (только для кодинга)
   const [files, setFiles] = useState([
-    { name: 'main.py', content: '# Напишите код решения здесь\nprint("Hello World")', readonly: false }
+    { name: 'main.py', content: 'print("Hello World")', readonly: false }
   ]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [newFileName, setNewFileName] = useState('');
 
-  // --- Работа с файлами ---
-  const handleAddFile = () => {
-    if (!newFileName.trim()) return;
-    setFiles([...files, { name: newFileName, content: '', readonly: false }]);
-    setNewFileName('');
-    setActiveFileIndex(files.length);
+  // --- ЗАГРУЗКА ДАННЫХ ПРИ РЕДАКТИРОВАНИИ ---
+  useEffect(() => {
+    if (isEditMode) {
+      setLoading(true);
+      axios.get(`http://localhost:8000/api/questions/${taskId}`)
+        .then(res => {
+          const data = res.data;
+          
+          setTaskType(data.type);
+
+          // ЛОГИКА ДЛЯ SOFT SKILLS и THEORY
+          let refAnswer = data.referenceAnswer || '';
+          
+          // Если это Psy, то варианты ответов лежат в data.files (массив)
+          // Нам нужно превратить их в красивый JSON для текстового поля
+          if (data.type === 'psy' && data.files && data.files.length > 0) {
+             refAnswer = JSON.stringify(data.files, null, 2);
+          }
+
+          setTask({
+            title: data.title,
+            description: data.description,
+            referenceAnswer: refAnswer,
+            level: data.level,
+            envId: (data.required_tag && data.required_tag.includes('pandas')) ? 'data-science' : 'basic'
+          });
+
+          // Если это Кодинг, загружаем файлы в редактор
+          if (data.type === 'coding' && data.files && data.files.length > 0) {
+            setFiles(data.files);
+          }
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          alert("Ошибка загрузки задачи");
+          navigate('/hr/dashboard');
+        });
+    }
+  }, [taskId]);
+
+
+  // --- ФАЙЛОВЫЕ ФУНКЦИИ ---
+  const handleAddFile = () => { if(!newFileName.trim()) return; setFiles([...files, { name: newFileName, content: '', readonly: false }]); setNewFileName(''); setActiveFileIndex(files.length); };
+  const handleDeleteFile = (index) => { const newFiles = files.filter((_, i) => i !== index); setFiles(newFiles); setActiveFileIndex(0); };
+  const handleFileContentChange = (value) => { 
+      setFiles(prev => {
+          const newFiles = [...prev];
+          newFiles[activeFileIndex] = { ...newFiles[activeFileIndex], content: value };
+          return newFiles;
+      });
   };
 
-  const handleDeleteFile = (index) => {
-    const newFiles = files.filter((_, i) => i !== index);
-    setFiles(newFiles);
-    setActiveFileIndex(0);
-  };
-
-  const handleFileContentChange = (value) => {
-    setFiles(prevFiles => {
-      const newFiles = [...prevFiles];
-      newFiles[activeFileIndex] = { ...newFiles[activeFileIndex], content: value };
-      return newFiles;
-    });
-  };
-
-  // --- Сохранение ---
+  // --- СОХРАНЕНИЕ ---
   const handleSaveTask = async () => {
     if (!task.title.trim() || !task.description.trim()) {
-      alert("Пожалуйста, заполните название и описание задачи.");
+      alert("Заполните название и описание.");
       return;
     }
-
     setLoading(true);
+
+    // Подготовка payload
+    let finalFiles = [];
+    
+    if (taskType === 'coding') {
+        finalFiles = files;
+    } else if (taskType === 'psy') {
+        // Для Psy пытаемся распарсить JSON из текстового поля обратно в массив
+        try {
+            if (task.referenceAnswer.trim()) {
+                finalFiles = JSON.parse(task.referenceAnswer);
+            }
+        } catch (e) {
+            alert("Ошибка в JSON формате вариантов ответов! Проверьте синтаксис.");
+            setLoading(false);
+            return;
+        }
+    }
 
     const payload = {
       ...task,
       type: taskType,
-      // Файлы отправляем только если это задача на кодинг
-      files: taskType === 'coding' ? files : []
+      files: finalFiles // Отправляем файлы (код или варианты ответов)
     };
 
-    console.log("📤 Отправка задачи:", payload);
-
     try {
-      const response = await axios.post('http://localhost:8000/api/tasks', payload);
-      
-      if (response.data.status === 'ok') {
-        alert(`✅ Задача успешно создана! ID: ${response.data.id}`);
-        // Очищаем форму
-        setTask({ ...task, title: '', description: '', referenceAnswer: '' });
+      if (isEditMode) {
+        await axios.put(`http://localhost:8000/api/questions/${taskId}`, payload);
+        alert("✅ Задача успешно обновлена!");
+      } else {
+        await axios.post('http://localhost:8000/api/tasks', payload);
+        alert("✅ Задача создана!");
+        setTask({ title: '', description: '', referenceAnswer: '', level: 'Intern', envId: 'basic' });
       }
     } catch (error) {
-      console.error("Ошибка сохранения:", error);
-      alert("❌ Не удалось сохранить задачу. Убедитесь, что бэкенд запущен.");
+      console.error(error);
+      alert("Ошибка сохранения.");
     } finally {
       setLoading(false);
     }
@@ -92,99 +131,71 @@ function TaskBuilder() {
   return (
     <div className="task-builder-page" style={{ padding: '2rem', color: '#fff', height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Кнопка НАЗАД */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1rem', display:'flex', justifyContent:'space-between' }}>
         <button 
-          onClick={() => navigate('/hr/dashboard')} 
+          onClick={() => navigate(-1)} 
           className="link-button"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none', background: 'transparent', color: '#aaa' }}
         >
-          <FaArrowLeft /> Назад к списку кандидатов
+          <FaArrowLeft /> Назад
         </button>
+        <h2 style={{margin:0, fontSize:'1.2rem', color:'white'}}>
+            {isEditMode ? `Редактирование задачи #${taskId}` : 'Создание новой задачи'}
+        </h2>
       </div>
 
-      {/* Основной контейнер */}
       <div className="glass-card task-builder-container" style={{ flexGrow: 1, overflow: 'hidden' }}>
         
-        {/* ЛЕВАЯ ПАНЕЛЬ: НАСТРОЙКИ */}
+        {/* ЛЕВАЯ ПАНЕЛЬ */}
         <div className="settings-panel">
-          <h2 style={{marginTop: 0}}>Конструктор Задач</h2>
-
-          {/* Переключатель Типа */}
+          
           <div className="task-type-tabs">
-            <div 
-              className={`type-tab ${taskType === 'coding' ? 'active' : ''}`}
-              onClick={() => setTaskType('coding')}
-            >
-              💻 Кодинг (Docker)
-            </div>
-            <div 
-              className={`type-tab ${taskType === 'theory' ? 'active' : ''}`}
-              onClick={() => setTaskType('theory')}
-            >
-              📖 Теория
-            </div>
+            <div className={`type-tab ${taskType === 'coding' ? 'active' : ''}`} onClick={() => setTaskType('coding')}>💻 Кодинг</div>
+            <div className={`type-tab ${taskType === 'theory' ? 'active' : ''}`} onClick={() => setTaskType('theory')}>📖 Теория</div>
+            <div className={`type-tab ${taskType === 'psy' ? 'active' : ''}`} onClick={() => setTaskType('psy')}>🧠 Soft Skills</div>
           </div>
           
-          {/* Основные поля */}
           <div style={{marginTop: '1rem'}}>
-            <label>Название задачи</label>
-            <input 
-              className="glass-input" 
-              value={task.title} 
-              onChange={e => setTask({...task, title: e.target.value})} 
-              placeholder="Например: Reverse String"
-            />
+            <label>Название</label>
+            <input className="glass-input" value={task.title} onChange={e => setTask({...task, title: e.target.value})} />
           </div>
 
           <div>
-            <label>Уровень сложности</label>
-            <select 
-              className="glass-input" 
-              value={task.level} 
-              onChange={e => setTask({...task, level: e.target.value})}
-            >
-              <option value="Intern">Intern (Стажер)</option>
+            <label>Уровень</label>
+            <select className="glass-input" value={task.level} onChange={e => setTask({...task, level: e.target.value})}>
+              <option value="Intern">Intern</option>
               <option value="Junior">Junior</option>
               <option value="Middle">Middle</option>
               <option value="Senior">Senior</option>
+              <option value="Lead">Lead</option> {/* ДОБАВЛЕН УРОВЕНЬ LEAD */}
+              <option value="All">All (Для Soft Skills)</option>
             </select>
           </div>
 
-          {/* Настройки для КОДИНГА */}
           {taskType === 'coding' && (
-            <div>
-              <label>Окружение (Библиотеки)</label>
-              <div className="env-selector">
-                {ENVIRONMENTS.map(env => (
-                  <div 
-                    key={env.id} 
-                    className={`env-card ${task.envId === env.id ? 'active' : ''}`}
-                    onClick={() => setTask({...task, envId: env.id})}
-                  >
-                    <strong>{env.name}</strong>
-                    <p style={{fontSize: '0.8rem', opacity: 0.7, margin: 0}}>{env.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+             <div>
+                <label>Среда выполнения</label>
+                <div className="env-selector">
+                   <div className={`env-card ${task.envId === 'basic' ? 'active' : ''}`} onClick={() => setTask({...task, envId: 'basic'})}>Python Basic</div>
+                   <div className={`env-card ${task.envId === 'data-science' ? 'active' : ''}`} onClick={() => setTask({...task, envId: 'data-science'})}>Data Science</div>
+                </div>
+             </div>
           )}
 
-          {/* Настройки для ТЕОРИИ */}
-          {taskType === 'theory' && (
+          {/* ПОЛЕ ДЛЯ ПРАВИЛЬНОГО ОТВЕТА ИЛИ JSON ОПЦИЙ */}
+          {(taskType === 'theory' || taskType === 'psy') && (
             <div>
-               <label>Эталонный ответ (скрыт от кандидата)</label>
+               <label>{taskType === 'psy' ? 'JSON с вариантами ответов' : 'Правильный ответ (для HR)'}</label>
                <textarea 
                 className="glass-input" 
-                style={{ height: '80px', resize: 'none', borderColor: '#4caf50' }}
+                style={{ height: '120px', resize: 'vertical', borderColor: '#4caf50', fontFamily: 'monospace', fontSize: '0.9rem' }}
                 value={task.referenceAnswer}
                 onChange={e => setTask({...task, referenceAnswer: e.target.value})}
-                placeholder="Напишите здесь краткий правильный ответ для проверки..."
+                placeholder={taskType === 'psy' ? '[ {"answerText": "...", "isCorrect": true}, ... ]' : 'Текст правильного ответа...'}
               />
             </div>
           )}
 
-          {/* Описание (Markdown) */}
           <div style={{flexGrow: 1, display: 'flex', flexDirection: 'column', marginTop: '1rem'}}>
             <label>Текст задания (Markdown)</label>
             <textarea 
@@ -192,75 +203,47 @@ function TaskBuilder() {
               style={{ flexGrow: 1, resize: 'none', minHeight: '150px', fontFamily: 'monospace' }}
               value={task.description}
               onChange={e => setTask({...task, description: e.target.value})}
-              placeholder={taskType === 'coding' ? "Опишите, что должна делать функция..." : "Введите текст вопроса..."}
             />
           </div>
 
-          <button className="big-button save-task-btn" onClick={handleSaveTask} disabled={loading}>
-            {loading ? "Сохранение..." : "Сохранить задачу"}
+          <button className="big-button save-task-btn" onClick={handleSaveTask} disabled={loading} style={{background: isEditMode ? '#ff9800' : '#22c55e'}}>
+            {loading ? "Сохранение..." : (isEditMode ? "Сохранить изменения" : "Создать задачу")}
           </button>
         </div>
 
-        {/* ПРАВАЯ ПАНЕЛЬ: КОНТЕНТ */}
+        {/* ПРАВАЯ ПАНЕЛЬ: РЕДАКТОР КОДА ИЛИ ПРЕВЬЮ */}
         <div className="content-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          
           {taskType === 'coding' ? (
-            // --- РЕДАКТОР КОДА ---
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-              
-              {/* Табы файлов */}
-              <div className="file-tabs" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', gap: '0.5rem', alignItems: 'center' }}>
-                {files.map((file, index) => (
-                  <div 
-                    key={index} 
-                    className={`file-tab ${activeFileIndex === index ? 'active' : ''}`}
-                    onClick={() => setActiveFileIndex(index)}
-                  >
-                    <FaFile size={12} /> {file.name}
-                    {index !== 0 && <FaTrash className="delete-icon" onClick={(e) => { e.stopPropagation(); handleDeleteFile(index); }} />}
-                  </div>
-                ))}
-                <div className="add-file-wrapper" style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
-                  <input type="text" className="glass-input-small" placeholder="helper.py" value={newFileName} onChange={e => setNewFileName(e.target.value)} />
-                  <button className="icon-button" onClick={handleAddFile}><FaPlus /></button>
-                </div>
-              </div>
-
-              {/* Monaco Editor */}
-              <div className="file-editor-area" style={{ flexGrow: 1 }}>
-                <Editor 
-                  height="100%" 
-                  defaultLanguage="python"
-                  theme="vs-dark"
-                  path={files[activeFileIndex].name}
-                  value={files[activeFileIndex].content}
-                  onChange={handleFileContentChange}
-                  options={{ 
-                    minimap: { enabled: false }, 
-                    fontSize: 14,
-                    automaticLayout: true
-                  }}
-                />
-              </div>
-            </div>
+             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', overflow: 'hidden' }}>
+                 <div className="file-tabs" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', gap: '0.5rem' }}>
+                    {files.map((file, index) => (
+                        <div key={index} className={`file-tab ${activeFileIndex === index ? 'active' : ''}`} onClick={() => setActiveFileIndex(index)}>
+                            <FaFile size={12} /> {file.name}
+                            {index !== 0 && <FaTrash className="delete-icon" onClick={(e) => { e.stopPropagation(); handleDeleteFile(index); }} />}
+                        </div>
+                    ))}
+                    <div className="add-file-wrapper" style={{marginLeft:'auto', display:'flex', gap:'0.5rem'}}>
+                         <input className="glass-input-small" value={newFileName} onChange={e => setNewFileName(e.target.value)} placeholder="new.py" />
+                         <button className="icon-button" onClick={handleAddFile}><FaPlus /></button>
+                    </div>
+                 </div>
+                 <div style={{flexGrow: 1}}>
+                    <Editor height="100%" theme="vs-dark" defaultLanguage="python" 
+                        path={files[activeFileIndex]?.name} 
+                        value={files[activeFileIndex]?.content} 
+                        onChange={handleFileContentChange} 
+                    />
+                 </div>
+             </div>
           ) : (
-            // --- ПРЕВЬЮ ТЕОРИИ ---
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
-              <h3 style={{opacity: 0.5}}>Предпросмотр вопроса</h3>
-              <div className="glass-card" style={{width: '90%', minHeight: '200px', display:'flex', flexDirection:'column', alignItems: 'flex-start', textAlign: 'left'}}>
-                <h4 style={{margin: '0 0 1rem 0'}}>{task.title || "Заголовок"}</h4>
-                <div style={{whiteSpace: 'pre-wrap', opacity: 0.8}}>{task.description || "Текст вопроса появится здесь..."}</div>
-                
-                {task.referenceAnswer && (
-                  <div style={{marginTop: '2rem', padding: '1rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '8px', width: '100%', boxSizing: 'border-box'}}>
-                    <strong style={{color: '#22c55e'}}>Правильный ответ (виден только HR):</strong>
-                    <p style={{margin: '0.5rem 0 0 0'}}>{task.referenceAnswer}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column' }}>
+                <h3 style={{opacity:0.5}}>Превью (текст)</h3>
+                <div className="glass-card" style={{width: '90%', maxHeight:'500px', overflowY:'auto', textAlign:'left'}}>
+                    <h4 style={{marginTop:0}}>{task.title}</h4>
+                    <p style={{whiteSpace: 'pre-wrap'}}>{task.description}</p>
+                </div>
+             </div>
           )}
-
         </div>
 
       </div>

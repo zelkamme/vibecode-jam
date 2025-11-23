@@ -28,7 +28,7 @@ __pycache__/
 venv/
 .venv/
 vibecode.db
-
+backend/uploads/
 # IDE мусор
 .vscode/
 .idea/
