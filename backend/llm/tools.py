@@ -1,6 +1,8 @@
 import json
+import re
+import ast
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, List
 
 
 def strip_fenced_lines(text: str) -> str:
@@ -48,3 +50,51 @@ def parse_response(response: str, required_keys: set) -> Dict[str, Union[str, No
         if isinstance(v, str) and v.strip() == "None":
             data[k] = None
     return data
+
+
+_SMART_QUOTES = {
+    "“": '"', "”": '"',
+    "‘": "'", "’": "'",
+    "„": '"', "«": '"', "»": '"',
+}
+
+def _replace_smart_quotes(s: str) -> str:
+    for smart, straight in _SMART_QUOTES.items():
+        s = s.replace(smart, straight)
+    return s
+
+def _strip_trailing_comma(s: str) -> str:
+    # Removes commas that appear right before a ] or }
+    return re.sub(r",\s*([\]\}])", r"\1", s)
+
+def clean_json(s: str) -> str:
+    """Return a version of *s* that is valid JSON."""
+    s = _replace_smart_quotes(s)
+    s = _strip_trailing_comma(s)
+    return s.strip()
+
+def parse_json_list(s: str) -> List[Dict[str, Any]]:
+    """
+    Parse *s* into a list of dictionaries.
+
+    1. Try strict JSON (`json.loads`).
+    2. If that fails, clean the string and try again.
+    3. If it still fails, fall back to ``ast.literal_eval`` (Python literal).
+    """
+    s = strip_fenced_lines(s)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        # try cleaning
+        cleaned = clean_json(s)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            # last resort – interpret as Python literal
+            try:
+                obj = ast.literal_eval(cleaned)
+                if isinstance(obj, list):
+                    return obj
+                raise ValueError("Parsed object is not a list")
+            except (SyntaxError, ValueError) as e:
+                raise ValueError(f"Unable to parse JSON/Python literal: {e}") from e
