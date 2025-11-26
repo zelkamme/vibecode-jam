@@ -14,7 +14,7 @@ function TheoryTest({ onComplete }) {
     const userLevel = localStorage.getItem('candidateLevel') || 'Intern';
     
     // Эмулируем первый запрос к AI для начала интервью
-    axios.post(`http://localhost:8000/api/theory/start`, { level: userLevel })
+    axios.post(`/api/theory/start`, { level: userLevel })
       .then(response => {
         // Бэк должен вернуть { message: "Привет! Первый вопрос..." }
         setMessages([{ sender: 'ai', text: response.data.message }]);
@@ -44,7 +44,7 @@ function TheoryTest({ onComplete }) {
 
     try {
       // Отправляем историю чата, чтобы AI понимал контекст (уточняющий вопрос или следующий)
-      const response = await axios.post('http://localhost:8000/api/theory/chat', {
+      const response = await axios.post('/api/theory/chat', {
         message: userMsg.text,
         history: messages // Отправляем предыдущую историю
       });

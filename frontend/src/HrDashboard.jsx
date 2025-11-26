@@ -11,7 +11,7 @@ function HrDashboard() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
   useEffect(() => {
-    axios.get(`${API_URL}/candidates`)
+    axios.get(`/api/candidates`)
       .then(response => {
         setCandidates(response.data);
         setLoading(false);

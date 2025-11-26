@@ -10,7 +10,7 @@ function ReportScreen({ onRestart }) {
     const userId = localStorage.getItem('currentCandidateId');
     if (!userId) return;
 
-    axios.get(`http://localhost:8000/api/my-report/${userId}`)
+    axios.get(`/api/my-report/${userId}`)
       .then(res => {
         if (res.data.ready) setReport(res.data);
         setLoading(false);

@@ -22,7 +22,7 @@ function VacancyBuilder() {
     }
 
     try {
-        await axios.post('/api/vacancies', form);
+        await axios.post(`/api/vacancies`, form);
         alert("Вакансия успешно открыта!");
         navigate('/hr/dashboard');
     } catch (error) {

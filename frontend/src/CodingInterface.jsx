@@ -33,7 +33,7 @@ function CodingInterface({ onComplete }) {
       setDebugInfo(savedLevel);
       
       try {
-        const response = await axios.get(`http://localhost:8000/api/task/coding/${savedLevel}`);
+        const response = await axios.get(`/api/task/coding/${savedLevel}`);
         const task = response.data;
         setTaskId(task.id);
 
@@ -108,7 +108,7 @@ function CodingInterface({ onComplete }) {
     setOutput({ stdout: '', stderr: 'Запуск контейнера...' });
     
     try {
-      const response = await axios.post('http://localhost:8000/api/run-code', {
+      const response = await axios.post('/api/run-code', {
         code: code,
         language: 'python',
         task_id: taskId
@@ -130,7 +130,7 @@ function CodingInterface({ onComplete }) {
     setUserInput('');
     
     try {
-      const response = await axios.post('http://localhost:8000/api/chat', {
+      const response = await axios.post('/api/chat', {
         message: userInput,
         history: chatHistory // Отправляем контекст
       });
@@ -151,7 +151,7 @@ function CodingInterface({ onComplete }) {
     }
 
     try {
-        const response = await axios.post('http://localhost:8000/api/analyze-integrity', {
+        const response = await axios.post('/api/analyze-integrity', {
             user_id: parseInt(currentUserId),
             focusLost: telemetry.current.focusLost,
             mouseLeftWindow: telemetry.current.mouseLeftWindow,

@@ -19,7 +19,7 @@ services:
       context: ./frontend
     container_name: frontend
     environment:
-      - VITE_API_URL=/api
+      - VITE_API_URL=http://backend:8000
     ports:
       - "3000:80"
     depends_on:
