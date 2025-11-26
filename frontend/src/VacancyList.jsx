@@ -22,7 +22,7 @@ function VacancyList() {
 
   const loadVacancies = () => {
     setLoading(true);
-    axios.get('http://localhost:8000/api/vacancies')
+    axios.get('/api/vacancies')
       .then(res => {
         setVacancies(res.data);
         setLoading(false);
@@ -38,7 +38,7 @@ function VacancyList() {
   // Сменить статус (Активна/Скрыта)
   const handleToggleStatus = async (vac) => {
     try {
-      await axios.put(`http://localhost:8000/api/vacancies/${vac.id}`, { is_active: !vac.is_active });
+      await axios.put(`/api/vacancies/${vac.id}`, { is_active: !vac.is_active });
       loadVacancies(); // Перезагружаем список
     } catch (e) { 
         alert("Ошибка обновления статуса"); 
@@ -49,7 +49,7 @@ function VacancyList() {
   const handleDeleteVacancy = async (id) => {
     if (!window.confirm("Вы уверены? Это действие нельзя отменить.")) return;
     try {
-      await axios.delete(`http://localhost:8000/api/vacancies/${id}`);
+      await axios.delete(`/api/vacancies/${id}`);
       loadVacancies();
     } catch (e) { 
         alert("Ошибка удаления"); 
@@ -59,7 +59,7 @@ function VacancyList() {
   // Сохранить изменения в вакансии (из модалки)
   const handleSaveVacancy = async () => {
     try {
-        await axios.put(`http://localhost:8000/api/vacancies/${editingVacancy.id}`, editingVacancy);
+        await axios.put(`/api/vacancies/${editingVacancy.id}`, editingVacancy);
         setEditingVacancy(null); // Закрываем модалку
         loadVacancies();
     } catch (e) { 
@@ -73,7 +73,7 @@ function VacancyList() {
   const handlePreview = async (vacancyId, title) => {
     setSelectedVacancyName(title);
     try {
-      const res = await axios.get(`http://localhost:8000/api/vacancies/${vacancyId}/preview-tasks`);
+      const res = await axios.get(`/api/vacancies/${vacancyId}/preview-tasks`);
       setPreviewTasks(res.data); // Открывает модалку
     } catch (error) {
       alert("Не удалось загрузить задачи");

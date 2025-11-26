@@ -1,3 +1,4 @@
+const API_URL = import.meta.env.VITE_API_URL;
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -10,7 +11,7 @@ function HrDashboard() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
   useEffect(() => {
-    axios.get('http://localhost:8000/api/candidates')
+    axios.get(`/api/candidates`)
       .then(response => {
         setCandidates(response.data);
         setLoading(false);
@@ -113,6 +114,7 @@ function HrDashboard() {
                           ) : (
                             <span style={{opacity:0.3}}>—</span>
                           )}
+
                         </td>
                       </tr>
                     ))

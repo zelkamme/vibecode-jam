@@ -14,7 +14,7 @@ function RegistrationPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios.get('http://localhost:8000/api/vacancies')
+    axios.get('/api/vacancies')
       .then(res => {
         // Показываем только активные вакансии
         const activeVacs = res.data.filter(v => v.is_active !== false);
@@ -54,7 +54,7 @@ function RegistrationPage() {
       formData.append('vacancy_id', selectedVacancyId);
       if (resumeFile) formData.append('resume', resumeFile);
 
-      const response = await axios.post('http://localhost:8000/api/register', formData, {
+      const response = await axios.post('/api/register', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 

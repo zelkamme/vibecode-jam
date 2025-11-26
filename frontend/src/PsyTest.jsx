@@ -8,7 +8,7 @@ function PsyTest({ onComplete }) {
 
   useEffect(() => {
     // Загружаем вопросы из БД
-    axios.get('http://localhost:8000/api/questions/psy')
+    axios.get('/api/questions/psy')
       .then(response => {
         setQuestions(response.data);
         setLoading(false);

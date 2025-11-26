@@ -10,7 +10,7 @@ function HrReport() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    axios.get(`http://localhost:8000/api/candidates/${candidateId}`)
+    axios.get(`/api/candidates/${candidateId}`)
       .then(response => {
         setCandidate(response.data);
         setLoading(false);
