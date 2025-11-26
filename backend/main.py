@@ -10,6 +10,8 @@ import tempfile
 import os
 from contextlib import asynccontextmanager
 
+from openai import OpenAI
+
 # Docker SDK
 from docker import from_env
 from docker.client import DockerClient
@@ -20,9 +22,15 @@ from backend.models import User, Question, Report, TestSession, Vacancy, UserAns
 
 from backend.llm.qa_gen import generate_theory_qa, generate_theory_check
 from backend.llm.helper_ai import generate_helper_ai  
-from ollama import Client as OllamaClient #TODO: Исправить # <--- ИСПРАВЛЕНО: Для работы с LLM (импорт из библиотеки ollama)
+
 from backend.llm.code_review import generate_code_review
 from backend.llm.unit_tests_gen import generate_unittests
+
+
+API_KEY = "sk-zqcVxD3N4g6W6D4Ek9DQVw"
+# Вариант с доменом без порта (HTTPS):
+BASE_URL = "https://llm.t1v.scibox.tech/v1"
+
 # --- Добавь это после импортов ---
 REDIS_HOST = "localhost"
 REDIS_PORT = 6379
@@ -32,25 +40,19 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 
+
 theory_session_state = {} # ПЕРЕМЕЩЕНО ВВЕРХ! 
-# Инициализация Ollama Client
-ollama_client: Optional[OllamaClient] = None
+# Инициализация llm_api
+llm_api: Optional[OpenAI] = None
 try:
-    # --- ИСПОЛЬЗОВАНИЕ РЕАЛЬНОГО Ollama Client ---
-    # Убедитесь, что ollama установлен: pip install ollama
-    # Убедитесь, что ollama-сервер запущен (например, docker run ollama/ollama)
-    ollama_client = OllamaClient(host="http://localhost:11434") # Убедитесь, что порт правильный
-
-    # Проверка доступности модели (опционально, для лучшей диагностики)
-    try:
-         ollama_client.show('gemma3:12b') # Проверка наличия модели
-    except Exception as e:
-         logging.warning(f"Ollama model 'gemma3:12b' not found or Ollama server issue: {e}")
-         # Здесь можно либо использовать Mock, либо выкинуть ошибку
-
+    # --- ИСПОЛЬЗОВАНИЕ РЕАЛЬНОГО llm_api ---
+    # Убедитесь, что OAI установлен: pip install openai
+    # Убедитесь, что OAI-совместимый-сервер запущен
+    llm_api = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    
 except Exception as e:
-    logging.warning(f"Ollama client not initialized: {e}")
-    # В случае ошибки, fallback на Mock (для отладки без Ollama)
+    logging.warning(f"llm_api not initialized: {e}")
+    # В случае ошибки, fallback на Mock (для отладки без llm_api)
     class MockOllamaClient:
         def chat(self, model, messages, stream):
             mock_result = {
@@ -62,7 +64,7 @@ except Exception as e:
                 return {'message': {'content': json.dumps(mock_result)}}
             else:
                 return [{'message': {'content': json.dumps(mock_result)}}]
-    ollama_client = MockOllamaClient()
+    llm_api = MockOllamaClient()
 
 
 # Хранение состояния интервью (ЗАГЛУШКА: в реальном проекте - Redis/DB)
@@ -465,12 +467,12 @@ def theory_chat(data: TheoryChatMessage, session: Session = Depends(get_session)
     
     # 1. Спрашиваем LLM оценку
     try:
-        # Убедитесь, что ollama_client инициализирован выше в коде
+        # Убедитесь, что llm_api инициализирован выше в коде
         llm_result = generate_theory_check(
             state["current_question_text"], 
             state["current_ideal_answer"], 
             user_answer, 
-            ollama_client
+            llm_api
         )
     except Exception as e:
         print(f"Error LLM: {e}")
@@ -583,7 +585,7 @@ def handle_coding_chat_assist(payload: ChatMessage, session: Session = Depends(g
             task=task_text,
             code=current_code,
             user_question=user_msg,
-            ollama=ollama_client,
+            llm_api=llm_api,
             redis_host=REDIS_HOST,
             redis_port=REDIS_PORT
         )
@@ -948,7 +950,7 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
             question=task_text, 
             ideal_answer="pass", 
             user_answer=final_code,
-            ollama=ollama_client, 
+            llm_api=llm_api, 
             redis_host=REDIS_HOST, 
             redis_port=REDIS_PORT
         )
@@ -967,7 +969,7 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
             lang=target_lang, # <--- И сюда тоже правильный язык!
             task=task_text, 
             code=final_code,
-            ollama=ollama_client, 
+            llm_api=llm_api, 
             redis_host=REDIS_HOST, 
             redis_port=REDIS_PORT
         )
