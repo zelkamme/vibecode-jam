@@ -40,11 +40,11 @@ def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_lev
     """
     return prompt
 
-def generate_code_review(lang, question, ideal_answer, user_answer, ollama, redis_host="localhost", redis_port=6379):
+def generate_code_review(lang, question, ideal_answer, user_answer, llm_api, redis_host="localhost", redis_port=6379):
     prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, redis_host)
 
     stream = cached_chat(
-        client=ollama,
+        client=llm_api,
         model='gpt-oss:20b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
@@ -63,7 +63,7 @@ def generate_code_review(lang, question, ideal_answer, user_answer, ollama, redi
     
     return result    
 
-def test_code_review(ollama, redis_host="localhost", redis_port=6379):
+def test_code_review(llm_api, redis_host="localhost", redis_port=6379):
     lang = "Python"
     question = "Напишите функцию, которая принимает список целых чисел и возвращает список без дубликатов, сохранив порядок."
     ideal_answer = """
@@ -79,4 +79,4 @@ def test_code_review(ollama, redis_host="localhost", redis_port=6379):
                 result.append(i)
         return result
     """
-    return generate_code_review(lang, question, ideal_answer, user_answer, ollama, redis_host, redis_port)
+    return generate_code_review(lang, question, ideal_answer, user_answer, llm_api, redis_host, redis_port)

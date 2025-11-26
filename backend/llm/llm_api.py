@@ -18,8 +18,9 @@ def stream_text_words_with_delay(text, min_delay=0.02, max_delay=0.10):
 
 def cached_chat(client, model, messages, stream=False, redis_host="localhost", redis_port=6379, ttl=3600, illusion=True, use_cache=True):
     # Generate unique cache key
+    messages[0]["content"] = "/no_think" + messages[0]["content"] #TODO: Remove this
     messages_str = json.dumps(messages, sort_keys=True)
-    key = f"ollama:chat:{model}:{hashlib.sha256(messages_str.encode()).hexdigest()}"
+    key = f"llm_api:chat:{model}:{hashlib.sha256(messages_str.encode()).hexdigest()}"
     
     # Connect to Redis
     r = redis.Redis(host=redis_host, port=redis_port, db=0)
@@ -40,20 +41,35 @@ def cached_chat(client, model, messages, stream=False, redis_host="localhost", r
             yield from [{'message': {'content': response_str}}]
             return
         
-    print("Using ollama")
-    # No cache hit - call Ollama
-    response = client.chat(model=model, messages=messages, stream=stream)
-    
+    print("Using llm_api")
+    # No cache hit - call llm_api
+
     if stream:
         full_response = []
-        for chunk in response:
-            if 'message' in chunk:
-                full_response.append(chunk['message']['content'])
-            yield chunk
-        # Cache the complete response
-        r.setex(key, ttl, ''.join(full_response))
+        with client.chat.completions.stream(
+            model="qwen3-32b-awq",
+            messages=messages,
+            #max_tokens=400,
+        ) as stream:
+            for event in stream:
+                if event.type == "chunk":
+                    delta = getattr(event.chunk.choices[0].delta, "content", None)
+                    if delta:
+                        full_response.append(event.chunk.choices[0].delta) #print(delta, end="", flush=True)
+                    #yield chunk
+                    r.setex(key, ttl, ''.join(full_response))    
+                elif event.type == "message.completed":
+                    full_response.append("\n")
+    
     else:
-        response_str = str(response['message']['content'])
+        response = client.chat.completions.create(
+            model="qwen3-32b-awq",
+            messages=messages,
+            temperature=0.7,
+            top_p=0.9,
+            #max_tokens=256,
+        )
+        response_str = str(response.choices[0].message.content)
         #print(response_str)
         r.setex(key, ttl, response_str)
         yield from [{'message': {'content': response_str}}]

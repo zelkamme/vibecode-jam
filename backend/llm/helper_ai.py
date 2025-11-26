@@ -42,11 +42,11 @@ def fill_helper_ai_prompt(lang, task, code, user_question):
     """
     return prompt
 
-def generate_helper_ai(lang, task, code, user_question, ollama, redis_host="localhost", redis_port=6379):
+def generate_helper_ai(lang, task, code, user_question, llm_api, redis_host="localhost", redis_port=6379):
     prompt = fill_helper_ai_prompt(lang, task, code, user_question)
 
     stream = cached_chat(
-        client=ollama,
+        client=llm_api,
         model='gpt-oss:20b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
@@ -64,7 +64,7 @@ def generate_helper_ai(lang, task, code, user_question, ollama, redis_host="loca
     result = parse_response(result[0], required_keys={"suggestion"})
     return result
 
-def test_helper_ai(ollama, redis_host="localhost", redis_port=6379):
+def test_helper_ai(llm_api, redis_host="localhost", redis_port=6379):
     lang = "Python"
     task = "Напишите функцию, которая принимает список целых чисел и возвращает список без дубликатов, сохранив порядок."
     code = """
@@ -74,4 +74,4 @@ def test_helper_ai(ollama, redis_host="localhost", redis_port=6379):
     """
     user_question = """
     Как доделать этот код""" 
-    return generate_helper_ai(lang, task, code, user_question, ollama, redis_host, redis_port)
+    return generate_helper_ai(lang, task, code, user_question, llm_api, redis_host, redis_port)

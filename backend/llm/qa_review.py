@@ -45,11 +45,11 @@ def fill_qa_review_prompt(lang, question, answer, skill_level="Junior"):
     """
     return prompt
 
-def generate_qa_review(lang, question, answer, ollama, redis_host="localhost", redis_port=6379):
+def generate_qa_review(lang, question, answer, llm_api, redis_host="localhost", redis_port=6379):
     prompt = fill_qa_review_prompt(lang, question, answer)
 
     stream = cached_chat(
-        client=ollama,
+        client=llm_api,
         model='gpt-oss:20b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
@@ -68,7 +68,7 @@ def generate_qa_review(lang, question, answer, ollama, redis_host="localhost", r
     result = parse_response(result[0], {"question_score", "rephrased_que", "rephrased_ans", "critique"})
     return result
 
-def test_qa_review(ollama, redis_host="localhost", redis_port=6379):
+def test_qa_review(llm_api, redis_host="localhost", redis_port=6379):
     lang = "Python"
     question = "Напишите функцию, которая принимает список целых чисел и возвращает список без дубликатов, сохранив порядок."
     answer = """
@@ -76,4 +76,4 @@ def test_qa_review(ollama, redis_host="localhost", redis_port=6379):
         seen = set()
         return [x for x in lst if not (x in seen or seen.add(x))]
     """
-    return generate_qa_review(lang, question, answer, ollama, redis_host, redis_port)
+    return generate_qa_review(lang, question, answer, llm_api, redis_host, redis_port)

@@ -128,13 +128,13 @@ def fill_theory_checker_prompt(question, ideal_answer, user_answer):
     {user_answer}
     </USER_ANSWER>
     """
-    print(prompt)
+    #print(prompt)
     return prompt
 
 
-def common_parser(prompt, ollama, redis_host, redis_port):
+def common_parser(prompt, llm_api, redis_host, redis_port):
     stream = cached_chat(
-        client=ollama,
+        client=llm_api,
         model='gpt-oss:20b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
@@ -153,26 +153,26 @@ def common_parser(prompt, ollama, redis_host, redis_port):
     result = parse_json_list(result[0])
     return result
 
-def generate_theory_qa(position, requirements, resume, ollama, redis_host="localhost", redis_port=6379):
+def generate_theory_qa(position, requirements, resume, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем теор. вопросы по должности, требованиям к должности и резюме
     """
     prompt = fill_theory_qa_gen_prompt(position, requirements, resume)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return common_parser(prompt, llm_api, redis_host, redis_port)
 
-def generate_code_qa(position, requirements, resume, code, ollama, redis_host="localhost", redis_port=6379):
+def generate_code_qa(position, requirements, resume, code, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем вопросы по должности, требованиям к должности, коду пользователя и резюме
     """
     prompt = fill_code_qa_gen_prompt(position, requirements, resume, code)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return common_parser(prompt, llm_api, redis_host, redis_port)
 
-def generate_theory_check(question, ideal_answer, user_answer, ollama, redis_host="localhost", redis_port=6379):
+def generate_theory_check(question, ideal_answer, user_answer, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем проверку ответов на теор. вопросы по вопросу, правильному ответу и ответу пользователя
     """
     prompt = fill_theory_checker_prompt(question, ideal_answer, user_answer)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return common_parser(prompt, llm_api, redis_host, redis_port)
 
 
-def test_code_qa(ollama, redis_host="localhost", redis_port=6379):
+def test_code_qa(llm_api, redis_host="localhost", redis_port=6379):
     position = "Junior Python Developer"
     requirements = "ООП, REST API, Django, PostgreSQL, Git, базовые алгоритмы, написание unit‑тестов"
     resume = """Студент 4‑го курса ИТ‑специальности. 1 год практики в Python. Реализовал небольшое веб‑приложение на Flask, знаком с Git, проходил курс «Введение в Django», написал несколько скриптов для автоматизации.
@@ -187,17 +187,17 @@ def test_code_qa(ollama, redis_host="localhost", redis_port=6379):
         conn.close()
         return result
     """
-    return generate_code_qa(position, requirements, resume, code, ollama, redis_host, redis_port)
+    return generate_code_qa(position, requirements, resume, code, llm_api, redis_host, redis_port)
 
-def test_theory_qa(ollama, redis_host="localhost", redis_port=6379):
+def test_theory_qa(llm_api, redis_host="localhost", redis_port=6379):
     position = "Junior Python Developer"
     requirements = "ООП, REST API, Django, PostgreSQL, Git, базовые алгоритмы, написание unit‑тестов"
     resume = """Студент 4‑го курса ИТ‑специальности. 1 год практики в Python. Реализовал небольшое веб‑приложение на Flask, знаком с Git, проходил курс «Введение в Django», написал несколько скриптов для автоматизации.
     """
-    return generate_theory_qa(position, requirements, resume, ollama, redis_host, redis_port)
+    return generate_theory_qa(position, requirements, resume, llm_api, redis_host, redis_port)
 
-def test_theory_check(ollama, redis_host="localhost", redis_port=6379):
+def test_theory_check(llm_api, redis_host="localhost", redis_port=6379):
     question = "Опиши, как работает механизм garbage collection в Python."
     ideal_answer = "В CPython используется подсчёт ссылок (reference counting) и дополнительный сборщик циклических ссылок, который периодически проходит по объектам‑кандидатам и освобождает те, у кого счётчик равен нулю и которые находятся в циклах."
     user_answer = "Python считает ссылки на объекты, и когда их количество становится нулём, объект удаляется. Есть также сборщик, который ищет циклы."
-    return generate_theory_check(question, ideal_answer, user_answer, ollama, redis_host, redis_port)
+    return generate_theory_check(question, ideal_answer, user_answer, llm_api, redis_host, redis_port)
