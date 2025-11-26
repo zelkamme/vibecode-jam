@@ -84,39 +84,24 @@ def fill_code_qa_gen_prompt(position, requirements, resume, code, que_num=5):
     return prompt
 
 def fill_theory_checker_prompt(question, ideal_answer, user_answer):
+    """
+    Возвращает Prompt для оценки ответа и генерации follow-up вопроса.
+    ВНИМАНИЕ: Возвращает СТРОГО ОДИН JSON-ОБЪЕКТ ({...}), а не массив.
+    """
     prompt = f"""Ты — автоматический оценщик ответов на вопросы интервью на русском языке.  
-    Тебе передаётся три блока текста, каждый начинается с метки и заканчивается пустой строкой:
+    Твоя задача — сравнить ответ пользователя с образцом и вывести оценку от 1 до 10 (1 — совсем неверно, 10 — полностью соответствует образцу), а также определить, **нужно ли задать дополнительный, уточняющий вопрос** по этой же теме.
 
-    1. **Вопрос** – формулировка задания, которое задаёт интервьюер - <QUESTION>
-    2. **Ответ системы** – «идеальный» (правильный) ответ, который считается образцом - <IDEAL_ANSWER>
-    3. **Ответ пользователя** – то, что написал кандидат - <USER_ANSWER>
+    [... остальные инструкции и критерии без изменений ...]
 
-    Твоя задача — сравнить ответ пользователя с образцом и вывести оценку от 1 до 10 (1 — совсем неверно, 10 — полностью соответствует образцу). Оценка должна базироваться на следующих критериях (каждый критерий оценивается по 2 балла, суммарно 10 баллов):
-
-    | Критерий                              | Что проверяется                                                                          |
-    |--------------------------------------|------------------------------------------------------------------------------------------|
-    | **Точность**                         | Насколько фактологически верен ответ (правильные термины, синтаксис, формулы).          |
-    | **Полнота**                          | Покрыты ли все основные аспекты, указанные в образце (не упущены важные части).          |
-    | **Глубина**                          | Насколько ответ раскрывает тему (приводятся детали, объяснения, причины).               |
-    | **Ясность изложения**                | Чёткость формулировок, отсутствие двусмысленностей, логическая последовательность.     |
-    | **Соответствие лучшим практикам**   | Учитывает ли ответ рекомендации/паттерны, принятые в индустрии (например, OOP‑принципы, security). |
-
-    **Оценивание:**  
-    - 0‑2 балла — ответ почти не соответствует критерию.  
-    - 3‑4 балла — удовлетворительный, но есть заметные недостатки.  
-    - 5‑6 баллов — хороший, но можно улучшить.  
-    - 7‑8 баллов — очень хороший, небольшие мелочи.  
-    - 9‑10 баллов — по смыслу полностью соответствует образцу или качественнее\полнее образца.
-
-    **Твой вывод** — **только** валидный JSON‑массив из одного объекта со следующими полями:  
+    **Твой вывод** — **только** валидный JSON‑объект:  
 
     ```json
-    [
-        {{
-            "score": <число от 1 до 10>,
-            "explanation": "<краткое обоснование выставленной оценки, 1‑2 предложения>"
-        }}
-    ]```
+    {{
+        "score": <число от 1 до 10>,
+        "explanation": "<краткое обоснование выставленной оценки, 1‑2 предложения>",
+        "follow_up_question": "<FollowUpQuestion или NEXT_QUESTION>"
+    }}
+    ```
     
     <QUESTION>
     {question}
@@ -128,14 +113,14 @@ def fill_theory_checker_prompt(question, ideal_answer, user_answer):
     {user_answer}
     </USER_ANSWER>
     """
-    print(prompt)
     return prompt
 
 
-def common_parser(prompt, ollama, redis_host, redis_port):
+# Общая функция для вызова LLM
+def _common_llm_parser(prompt, ollama, redis_host, redis_port, is_list_response=False):
     stream = cached_chat(
         client=ollama,
-        model='gpt-oss:20b',
+        model='gemma3:12b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
         redis_port=redis_port,
@@ -146,30 +131,36 @@ def common_parser(prompt, ollama, redis_host, redis_port):
     
     result = []
     for chunk in stream:
-        print(chunk)
-        #print(chunk['message']['content'], end='', flush=True)
         result.append(chunk['message']['content'])
     
-    result = parse_json_list(result[0])
-    return result
+    if not result:
+        raise ValueError("LLM returned empty response.")
+        
+    if is_list_response:
+        return parse_json_list(result[0])
+    else:
+        # Для Theory Check
+        required_keys = {"score", "explanation", "follow_up_question"}
+        return parse_response(result[0], required_keys)
+
 
 def generate_theory_qa(position, requirements, resume, ollama, redis_host="localhost", redis_port=6379):
     """Генерируем теор. вопросы по должности, требованиям к должности и резюме
     """
     prompt = fill_theory_qa_gen_prompt(position, requirements, resume)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return _common_llm_parser(prompt, ollama, redis_host, redis_port, is_list_response=True)
 
 def generate_code_qa(position, requirements, resume, code, ollama, redis_host="localhost", redis_port=6379):
     """Генерируем вопросы по должности, требованиям к должности, коду пользователя и резюме
     """
     prompt = fill_code_qa_gen_prompt(position, requirements, resume, code)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return _common_llm_parser(prompt, ollama, redis_host, redis_port, is_list_response=True)
 
 def generate_theory_check(question, ideal_answer, user_answer, ollama, redis_host="localhost", redis_port=6379):
-    """Генерируем проверку ответов на теор. вопросы по вопросу, правильному ответу и ответу пользователя
+    """Генерируем проверку ответов на теор. вопросы с follow-up логикой.
     """
     prompt = fill_theory_checker_prompt(question, ideal_answer, user_answer)
-    return common_parser(prompt, ollama, redis_host, redis_port)
+    return _common_llm_parser(prompt, ollama, redis_host, redis_port, is_list_response=False)
 
 
 def test_code_qa(ollama, redis_host="localhost", redis_port=6379):

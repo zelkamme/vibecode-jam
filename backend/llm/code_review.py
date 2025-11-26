@@ -45,7 +45,7 @@ def generate_code_review(lang, question, ideal_answer, user_answer, ollama, redi
 
     stream = cached_chat(
         client=ollama,
-        model='gpt-oss:20b',
+        model='gemma3:12b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
         redis_port=redis_port,

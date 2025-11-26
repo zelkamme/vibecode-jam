@@ -48,7 +48,7 @@ def generate_unittests(lang, task, code, ollama, redis_host="localhost", redis_p
 
     stream = cached_chat(
         client=ollama,
-        model='gpt-oss:20b',
+        model='gemma3:12b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
         redis_port=redis_port,

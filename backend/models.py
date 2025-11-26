@@ -69,8 +69,10 @@ class UserAnswer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: int = Field(foreign_key="testsession.id")
     question_id: int = Field(foreign_key="question.id")
-    user_code: str
-    is_correct: bool
+    user_code: Optional[str] = None # Изменили на Optional
+    user_answer_text: Optional[str] = None # ДОБАВЛЕНО: для теор/пси
+    is_correct: Optional[bool] = None # Изменили на Optional, т.к. может быть score
+    score: int = Field(default=0) # ДОБАВЛЕНО: Для хранения балла (1/0 для Psy, 1-10 для Theory) 
     session: Optional[TestSession] = Relationship(back_populates="answers")
 
 # 7. ОТЧЕТ

@@ -47,7 +47,7 @@ def generate_helper_ai(lang, task, code, user_question, ollama, redis_host="loca
 
     stream = cached_chat(
         client=ollama,
-        model='gpt-oss:20b',
+        model='gemma3:12b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
         redis_port=redis_port,

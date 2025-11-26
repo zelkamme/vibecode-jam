@@ -50,7 +50,7 @@ def generate_qa_review(lang, question, answer, ollama, redis_host="localhost", r
 
     stream = cached_chat(
         client=ollama,
-        model='gpt-oss:20b',
+        model='gemma3:12b',
         messages=[{'role': 'user', 'content': prompt}],
         redis_host=redis_host,
         redis_port=redis_port,
