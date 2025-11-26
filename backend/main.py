@@ -846,27 +846,39 @@ async def run_code(payload: RunCodeRequest, session: Session = Depends(get_sessi
 
 @app.post("/api/analyze-integrity")
 def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_session)):
+    print(f"\n🛑 --- НАЧАЛО ФИНАЛЬНОГО АНАЛИЗА (User ID: {payload.user_id}) ---")
     
-    
+    # Словарь для перевода тегов БД в названия языков для LLM
+    TAG_TO_LANG = {
+        "python": "Python",
+        "javascript": "JavaScript",
+        "js": "JavaScript",
+        "java": "Java",
+        "cpp": "C++",
+        "c++": "C++",
+        "go": "Go",
+        "golang": "Go",
+        "pandas": "Python"
+    }
+
     # 1. Поиск пользователя
     user = session.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # 1. Сначала ищем ту сессию, которая сейчас "В ПРОЦЕССЕ" (куда писал theory_chat)
+    # 2. Поиск сессии (Приоритет: STARTED -> Последняя созданная)
     active_session = session.exec(
         select(TestSession)
         .where(TestSession.user_id == user.id)
-        .where(TestSession.status == "started") # <--- Самое важное условие
+        .where(TestSession.status == "started") 
         .order_by(TestSession.created_at.desc())
     ).first()
 
     if active_session:
         last_session = active_session
-        
+        print(f"✅ Найдена АКТИВНАЯ сессия ID: {last_session.id}")
     else:
-        # 2. Если активной нет (вдруг уже закрыли?), берем самую последнюю по времени (фолбек)
-        print(" Активной сессии нет, ищу последнюю архивную...")
+        print("⚠️ Активной сессии нет, ищу последнюю архивную...")
         last_session = session.exec(
             select(TestSession)
             .where(TestSession.user_id == user.id)
@@ -874,43 +886,15 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         ).first()
 
     if not last_session:
-        print(" ОШИБКА: Сессий вообще нет! Создаю аварийную.")
+        print("❌ ОШИБКА: Сессий вообще нет! Создаю аварийную.")
         last_session = TestSession(user_id=user.id, status="completed")
         session.add(last_session)
         session.commit()
         session.refresh(last_session)
     
     session_id = last_session.id
-    print(f" Работаем с сессией ID: {session_id}")
 
-    # =========================================================
-    # 🛠️ БЛОК ОТЛАДКИ (Показывает, что реально есть в БД) 🛠️
-    # =========================================================
-    print("\n🔎 [DEBUG] Проверка содержимого таблицы UserAnswer:")
-    
-    raw_answers = session.exec(
-        select(UserAnswer).where(UserAnswer.session_id == session_id)
-    ).all()
-    
-    print(f" Найдено записей ответов: {len(raw_answers)}")
-    
-    if len(raw_answers) == 0:
-        print(" ВНИМАНИЕ: База ответов пуста! Значит theory_chat не сохранил данные.")
-        print(" Проверьте функцию theory_chat в main.py (там должен быть session.add и commit)")
-    else:
-        for idx, ans in enumerate(raw_answers):
-            # Пробуем узнать тип вопроса для каждой записи
-            q_type = "Unknown"
-            q_obj = session.get(Question, ans.question_id)
-            if q_obj:
-                q_type = q_obj.type
-            
-            print(f"   [{idx+1}] Тип: {q_type} | Score: {ans.score} | Ответ: '{str(ans.user_answer_text)[:30]}...'")
-    print("------------------------------------------\n")
-    # =========================================================
-
-    # 3. Разделение ответов по типам (Теория / Психология)
-    # Делаем JOIN с таблицей вопросов
+    # 3. Выгрузка ответов и расчет баллов
     results = session.exec(
         select(UserAnswer, Question)
         .join(Question, UserAnswer.question_id == Question.id)
@@ -920,45 +904,46 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
     theory_answers = [ans for ans, q in results if q.type == 'theory']
     psy_answers = [ans for ans, q in results if q.type == 'psy']
 
-    # 4. Расчет баллов за ТЕОРИЮ (Сумма баллов / Максимум)
+    # --- Расчет ТЕОРИИ ---
     if theory_answers:
-        total_theory_score = sum([a.score for a in theory_answers]) # Сумма оценок (например, 8 + 7 + 10 = 25)
-        max_possible_theory = len(theory_answers) * 10             # Максимум (3 вопроса * 10 = 30)
-        
-        if max_possible_theory > 0:
-            theory_score_percent = (total_theory_score / max_possible_theory) * 100
-        else:
-            theory_score_percent = 0
-            
-        print(f" ТЕОРИЯ: Набрано {total_theory_score} из {max_possible_theory} ({theory_score_percent:.1f}%)")
+        total_theory_score = sum([a.score for a in theory_answers])
+        max_possible_theory = len(theory_answers) * 10             
+        theory_score_percent = (total_theory_score / max_possible_theory) * 100 if max_possible_theory > 0 else 0
+        print(f"🧮 ТЕОРИЯ: {theory_score_percent:.1f}%")
     else:
-        print(" ТЕОРИЯ: Ответов нет. Оценка 0%.")
+        print("⚠️ ТЕОРИЯ: Ответов нет. Оценка 0%.")
         theory_score_percent = 0
 
-    # 5. Расчет баллов за SOFT SKILLS (Процент правильных)
+    # --- Расчет SOFT SKILLS ---
     if psy_answers:
         psy_correct = len([a for a in psy_answers if a.is_correct])
         psy_score_percent = (psy_correct / len(psy_answers)) * 100
-        print(f" SOFT SKILLS: Правильных {psy_correct} из {len(psy_answers)} ({psy_score_percent:.1f}%)")
+        print(f"🧠 SOFT SKILLS: {psy_score_percent:.1f}%")
     else:
-        # Если вопросов не было, даем 100% кредит доверия
-        print(" SOFT SKILLS: Вопросов не было. Оценка 100%.")
+        print("🧠 SOFT SKILLS: Вопросов не было. Оценка 100%.")
         psy_score_percent = 100 
 
-    # 6. LLM Code Review (Анализ кода)
-    print("\n Запуск LLM Code Review...")
+    # 4. Определение языка программирования для LLM
     final_code = payload.codeHistory[-1] if payload.codeHistory else "# No code provided"
     
-    task_text = "Python Task"
+    task_text = "Coding Task"
+    target_lang = "Python" # Значение по умолчанию
+
     if payload.coding_task_id:
         task_q = session.get(Question, payload.coding_task_id)
         if task_q:
             task_text = task_q.text
+            # Берем первый тег (например "javascript" из "javascript,frontend")
+            raw_tag = task_q.required_tag.split(',')[0].strip().lower()
+            target_lang = TAG_TO_LANG.get(raw_tag, "Python")
+            print(f"ℹ️ Язык определен по задаче: {target_lang} (тег: {raw_tag})")
+    
+    print(f"\n🤖 Запуск LLM Code Review для языка {target_lang}...")
 
+    # 5. Вызов LLM (Code Review)
     try:
-        # Вызов LLM для оценки кода
         review_res = generate_code_review(
-            lang="Python", 
+            lang=target_lang,   # <--- Передаем правильный язык!
             question=task_text, 
             ideal_answer="pass", 
             user_answer=final_code,
@@ -969,16 +954,16 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         func_score = int(review_res.get("functional_score", 5))
         style_score = int(review_res.get("stylistic_score", 5))
         critique = review_res.get("critique", "Решение принято.")
-        print(f" Оценка кода: Функционал={func_score}, Стиль={style_score}")
+        print(f"✅ Оценка кода: F={func_score}, S={style_score}")
     except Exception as e:
-        print(f" Ошибка LLM Review: {e}")
+        print(f"❌ Ошибка LLM Review: {e}")
         func_score, style_score, critique = 5, 5, "Не удалось провести автоматическую проверку кода."
 
-    # 7. Генерация Unit-тестов (для отчета)
+    # 6. Генерация Unit-тестов
     tests_json = "{}"
     try:
         tests_res = generate_unittests(
-            lang="Python", 
+            lang=target_lang, # <--- И сюда тоже правильный язык!
             task=task_text, 
             code=final_code,
             ollama=ollama_client, 
@@ -987,18 +972,16 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         )
         tests_json = json.dumps(tests_res)
     except Exception as e:
-        print(f" Ошибка генерации тестов: {e}")
+        print(f"⚠️ Ошибка генерации тестов: {e}")
 
-    # 8. Расчет Integrity (Анти-чит)
+    # 7. Финальный расчет и сохранение
     integrity = 100
     integrity -= (payload.focusLost * 5)
     integrity -= (payload.mouseLeftWindow * 2)
     if integrity < 0: integrity = 0
 
-    # 9. Финальная формула оценки
     code_percent = ((func_score + style_score) / 20) * 100
     
-    # ВЕСА: Код=40%, Теория=30%, Софты=20%, Античит=10%
     final_grade = (
         (code_percent * 0.4) + 
         (theory_score_percent * 0.3) + 
@@ -1006,14 +989,9 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         (integrity * 0.1)
     )
     
-    print(f"\n ИТОГОВЫЙ РАСЧЕТ:")
-    print(f"   Code:    {code_percent:.1f}%")
-    print(f"   Theory:  {theory_score_percent:.1f}%")
-    print(f"   Psy:     {psy_score_percent:.1f}%")
-    print(f"   Cheat:   {integrity}%")
-    print(f" FINAL GRADE: {final_grade:.1f}/100")
+    print(f"🏆 FINAL GRADE: {final_grade:.1f}/100")
 
-    # 10. Сохранение отчета в базу данных
+    # Закрываем сессию
     last_session.status = "completed"
     session.add(last_session)
 
@@ -1025,18 +1003,18 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         "generated_tests": json.loads(tests_json)
     }
 
-    # Проверка на существование отчета (update vs create)
+    # Сохраняем/Обновляем отчет
     existing_report = session.exec(select(Report).where(Report.session_id == session_id)).first()
     
     if existing_report:
-        print(" Обновляем старый отчет")
+        print("♻️ Обновляем старый отчет")
         existing_report.final_score = int(final_grade)
         existing_report.integrity_score = integrity
         existing_report.summary_text = critique
         existing_report.telemetry_json = json.dumps(telemetry_data)
         session.add(existing_report)
     else:
-        print(" Создаем новый отчет")
+        print("🆕 Создаем новый отчет")
         report = Report(
             session_id=session_id,
             final_score=int(final_grade),
@@ -1047,7 +1025,7 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
         session.add(report)
 
     session.commit()
-    
+    print("🛑 --- КОНЕЦ АНАЛИЗА ---\n")
 
     return {
         "status": "completed",
