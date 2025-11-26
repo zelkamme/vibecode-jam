@@ -950,6 +950,7 @@ def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_
             question=task_text, 
             ideal_answer="pass", 
             user_answer=final_code,
+            position="Junior Developer", #TODO: Исправить на данные из UI
             llm_api=llm_api, 
             redis_host=REDIS_HOST, 
             redis_port=REDIS_PORT
