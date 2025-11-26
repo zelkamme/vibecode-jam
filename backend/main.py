@@ -415,41 +415,40 @@ def get_candidate_detail(user_id: int, session: Session = Depends(get_session)):
 
 # ---------------- RUN CODE (DOCKER) ------------------
 
+
 @router.post("/run-code")
 async def run_code(payload: RunCodeRequest, session: Session = Depends(get_session)):
-    files_to_send = []
-    env_to_use = "basic"
+    # Имя Docker volume — ДОЛЖНО совпадать с docker-compose.yml
+    VOLUME_NAME = "vibecode-jam_code_runner_shared"
 
-    if payload.task_id:
-        q = session.get(Question, payload.task_id)
-        if q:
-            if "pandas" in q.required_tag:
-                env_to_use = "data-science"
+    # Путь в backend-контейнере (его МОНТИРУЕТ volume)
+    shared_dir = os.getenv("SHARED_DIR", "/shared")
+    os.makedirs(shared_dir, exist_ok=True)
 
-            if q.files_json:
-                files_to_send = json.loads(q.files_json)
-                for f in files_to_send:
-                    if f["name"] == "main.py":
-                        f["content"] = payload.code
-
-    temp_dir = tempfile.mkdtemp()
-    source_path = os.path.join(temp_dir, "main.py")
-
+    # Создаём файл main.py во volume
+    source_path = os.path.join(shared_dir, "main.py")
     with open(source_path, "w", encoding="utf-8") as f:
         f.write(payload.code)
+
+    # Выбор окружения
+    env_to_use = "basic"
+    if payload.task_id:
+        q = session.get(Question, payload.task_id)
+        if q and "pandas" in q.required_tag:
+            env_to_use = "data-science"
 
     env_map = {
         "basic": "python:3.12-alpine",
         "data-science": "python:3.12-slim"
     }
-
     image = env_map.get(env_to_use, "python:3.12-alpine")
 
+    # Запуск runner-контейнера
     try:
         container = docker_client.containers.run(
             image=image,
             command=["python", "/work/main.py"],
-            volumes={temp_dir: {"bind": "/work", "mode": "rw"}},
+            volumes={VOLUME_NAME: {"bind": "/work", "mode": "rw"}},  # ← ВАЖНО!
             network_disabled=True,
             detach=True,
             mem_limit="256m",
@@ -460,16 +459,21 @@ async def run_code(payload: RunCodeRequest, session: Session = Depends(get_sessi
             remove=True
         )
 
-        exit_code = container.wait()
+        result = container.wait()
         logs = container.logs(stdout=True, stderr=True).decode()
 
-        stdout = logs
-        stderr = "" if exit_code["StatusCode"] == 0 else logs
+        status = result.get("StatusCode", 1)
 
-        return {"stdout": stdout, "stderr": stderr}
+        if status == 0:
+            return {"stdout": logs, "stderr": ""}
+        else:
+            return {"stdout": "", "stderr": logs}
 
     except Exception as e:
         return {"stdout": "", "stderr": f"Docker error: {str(e)}"}
+
+
+
 
 
 # ---------------- FINISH TEST ------------------

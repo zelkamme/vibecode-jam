@@ -9,10 +9,10 @@ services:
       - ./backend:/app
       - ./backend/dbdata:/app/db
       - /var/run/docker.sock:/var/run/docker.sock
-      - code_runner_shared:/shared   # ← ТУТ ДОЛЖНО БЫТЬ!
+      - code_runner_shared:/shared
     environment:
       - PYTHONUNBUFFERED=1
-      - SHARED_DIR=/shared
+      - SHARED_DIR=/app/shared
     networks:
       - app-network
 
@@ -29,26 +29,9 @@ services:
     networks:
       - app-network
 
-  redis:
-    image: redislabs/redisearch:latest
-    container_name: redis-search
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
 networks:
   app-network:
     driver: bridge
 
 volumes:
   code_runner_shared:
-  redis_data:
