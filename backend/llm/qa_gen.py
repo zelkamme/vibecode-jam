@@ -1,6 +1,4 @@
-from llm_api import cached_chat
-from tools import parse_json_list
-
+from llm_api import common_list_parser
 
 def fill_theory_qa_gen_prompt(position, requirements, resume, que_num=5):
     json_item = ""
@@ -132,44 +130,23 @@ def fill_theory_checker_prompt(question, ideal_answer, user_answer):
     return prompt
 
 
-def common_parser(prompt, llm_api, redis_host, redis_port):
-    stream = cached_chat(
-        client=llm_api,
-        model='gpt-oss:20b',
-        messages=[{'role': 'user', 'content': prompt}],
-        redis_host=redis_host,
-        redis_port=redis_port,
-        stream=False,
-        illusion=False,
-        use_cache=True,
-    )
-    
-    result = []
-    for chunk in stream:
-        print(chunk)
-        #print(chunk['message']['content'], end='', flush=True)
-        result.append(chunk['message']['content'])
-    
-    result = parse_json_list(result[0])
-    return result
-
 def generate_theory_qa(position, requirements, resume, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем теор. вопросы по должности, требованиям к должности и резюме
     """
     prompt = fill_theory_qa_gen_prompt(position, requirements, resume)
-    return common_parser(prompt, llm_api, redis_host, redis_port)
+    return common_list_parser(prompt, llm_api, redis_host, redis_port)
 
 def generate_code_qa(position, requirements, resume, code, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем вопросы по должности, требованиям к должности, коду пользователя и резюме
     """
     prompt = fill_code_qa_gen_prompt(position, requirements, resume, code)
-    return common_parser(prompt, llm_api, redis_host, redis_port)
+    return common_list_parser(prompt, llm_api, redis_host, redis_port)
 
 def generate_theory_check(question, ideal_answer, user_answer, llm_api, redis_host="localhost", redis_port=6379):
     """Генерируем проверку ответов на теор. вопросы по вопросу, правильному ответу и ответу пользователя
     """
     prompt = fill_theory_checker_prompt(question, ideal_answer, user_answer)
-    return common_parser(prompt, llm_api, redis_host, redis_port)
+    return common_list_parser(prompt, llm_api, redis_host, redis_port)
 
 
 def test_code_qa(llm_api, redis_host="localhost", redis_port=6379):

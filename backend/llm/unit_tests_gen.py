@@ -1,4 +1,4 @@
-from llm_api import cached_chat
+from llm_api import common_llm_call
 from tools import parse_response
 
 
@@ -44,24 +44,12 @@ def fill_unittest_gen_prompt(lang, task, code):
     return prompt
 
 def generate_unittests(lang, task, code, llm_api, redis_host="localhost", redis_port=6379):
+    """Генерирует код, юнит-тестов кода пользователя согласно заданию:
+    Вход: язык, задача, код пользователя
+    Выход: 3 юнит теста
+    """
     prompt = fill_unittest_gen_prompt(lang, task, code)
-
-    stream = cached_chat(
-        client=llm_api,
-        model='gpt-oss:20b',
-        messages=[{'role': 'user', 'content': prompt}],
-        redis_host=redis_host,
-        redis_port=redis_port,
-        stream=False,
-        illusion=False,
-        use_cache=True,
-    )
-    
-    result = []
-    for chunk in stream:
-        #print(chunk['message']['content'], end='', flush=True)
-        result.append(chunk['message']['content'])
-    
+    result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], required_keys={"unit_test1", "unit_test2", "unit_test3"})   
     return result
 

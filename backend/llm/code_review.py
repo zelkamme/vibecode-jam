@@ -1,4 +1,4 @@
-from llm_api import cached_chat
+from llm_api import common_llm_call
 from tools import parse_response
 
 
@@ -41,24 +41,12 @@ def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_lev
     return prompt
 
 def generate_code_review(lang, question, ideal_answer, user_answer, llm_api, redis_host="localhost", redis_port=6379):
+    """Код ревью - общая и стилистическая оценки, критика:
+    Вход язык, вопрос, эталонный код, код юзера
+    Выход: функциональная оценка, стилистическая оценка, критика
+    """
     prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, redis_host)
-
-    stream = cached_chat(
-        client=llm_api,
-        model='gpt-oss:20b',
-        messages=[{'role': 'user', 'content': prompt}],
-        redis_host=redis_host,
-        redis_port=redis_port,
-        stream=False,
-        illusion=False,
-        use_cache=True,
-    )
-    
-    result = []
-    for chunk in stream:
-        #print(chunk['message']['content'], end='', flush=True)
-        result.append(chunk['message']['content'])
-    
+    result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], required_keys={"functional_score", "stylistic_score", "critique"})
     
     return result    

@@ -1,4 +1,4 @@
-from llm_api import cached_chat
+from llm_api import common_llm_call
 from tools import parse_response
 
 
@@ -45,26 +45,14 @@ def fill_qa_review_prompt(lang, question, answer, skill_level="Junior"):
     """
     return prompt
 
-def generate_qa_review(lang, question, answer, llm_api, redis_host="localhost", redis_port=6379):
-    prompt = fill_qa_review_prompt(lang, question, answer)
 
-    stream = cached_chat(
-        client=llm_api,
-        model='gpt-oss:20b',
-        messages=[{'role': 'user', 'content': prompt}],
-        redis_host=redis_host,
-        redis_port=redis_port,
-        stream=False,
-        illusion=False,
-        use_cache=True,
-    )
-    
-    result = []
-    for chunk in stream:
-        print(chunk)
-        #print(chunk['message']['content'], end='', flush=True)
-        result.append(chunk['message']['content'])
-    
+def generate_qa_review(lang, question, answer, llm_api, redis_host="localhost", redis_port=6379):
+    """Для админа, который вопросы набивает, оценивает корректность самого вопроса
+    Вход: язык, вопрос, ответ
+    Выход: общая оценка вопроса, перефраз вопроса, перефраз ответа, критика.
+    """
+    prompt = fill_qa_review_prompt(lang, question, answer)
+    result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], {"question_score", "rephrased_que", "rephrased_ans", "critique"})
     return result
 
