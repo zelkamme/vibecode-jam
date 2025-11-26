@@ -1,11 +1,11 @@
 from helper_ai import test_helper_ai, generate_helper_ai
 from qa_review import test_qa_review, generate_qa_review
-from code_review import test_code_review, generate_code_review
+from code_review import test_code_review, generate_code_review, test_lang_detect, generate_lang_detect
 from unit_tests_gen import test_unittest_gen, generate_unittests
 from qa_gen import test_code_qa, test_theory_qa, test_theory_check, generate_code_qa, generate_theory_check, generate_theory_qa
 from openai import OpenAI
 
-API_KEY = "API KEY"
+API_KEY = "APIKEY"
 # Вариант с доменом без порта (HTTPS):
 BASE_URL = "https://llm.t1v.scibox.tech/v1"
 # Альтернатива с IP:порт
@@ -34,3 +34,6 @@ print(test_theory_qa(llm_api, REDIS_HOST, REDIS_PORT))
 
 print(test_theory_check(llm_api, REDIS_HOST, REDIS_PORT))
 #generate_theory_check
+
+print(test_lang_detect(llm_api, REDIS_HOST, REDIS_PORT))
+#generate_lang_detect
