@@ -2,8 +2,8 @@ from llm_api import common_llm_call
 from tools import parse_response
 
 
-def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_level="Junior"):
-    prompt = f"""Ты – высококвалифицированный ревьюер кода, проводящий техническое собеседование на должность {skill_level} {lang}-разработчик.  
+def fill_code_review_prompt(lang, question, ideal_answer, user_answer, position):
+    prompt = f"""Ты – высококвалифицированный ревьюер кода, проводящий техническое собеседование на должность {position} ({lang}).  
     Тебе передаётся следующая информация (в порядке перечисления):  
 
     1. Язык программирования – <LANGUAGE>. 
@@ -40,12 +40,12 @@ def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_lev
     """
     return prompt
 
-def generate_code_review(lang, question, ideal_answer, user_answer, skill_level, llm_api, redis_host="localhost", redis_port=6379):
+def generate_code_review(lang, question, ideal_answer, user_answer, position, llm_api, redis_host="localhost", redis_port=6379):
     """Код ревью - общая и стилистическая оценки, критика:
     Вход язык, вопрос, эталонный код, код юзера
     Выход: функциональная оценка, стилистическая оценка, критика
     """
-    prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_level)
+    prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, position)
     result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], required_keys={"functional_score", "stylistic_score", "critique"})
     
@@ -67,8 +67,8 @@ def test_code_review(llm_api, redis_host="localhost", redis_port=6379):
                 result.append(i)
         return result
     """
-    skill_level = "Junior"
-    return generate_code_review(lang, question, ideal_answer, user_answer, skill_level, llm_api, redis_host, redis_port)
+    position = "Junior"
+    return generate_code_review(lang, question, ideal_answer, user_answer, position, llm_api, redis_host, redis_port)
 
 def fill_lang_detect_prompt(code):
     prompt = f"""You are a highly qualified code reviewer - you have to output the programming language of the code provided to you in tags <CODE></CODE>.

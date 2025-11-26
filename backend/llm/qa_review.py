@@ -2,9 +2,9 @@ from llm_api import common_llm_call
 from tools import parse_response
 
 
-def fill_qa_review_prompt(lang, question, answer, skill_level="Junior"):
+def fill_qa_review_prompt(lang, question, answer, position):
     prompt = f"""Вы — эксперт по языку программирования {lang}.
-    Ваша задача — оценить заданный вопрос для собеседования на позицию {skill_level} {lang}-разработчик и ожидаемый ответ на него.
+    Ваша задача — оценить заданный вопрос для собеседования на позицию {position} ({lang}) и ожидаемый ответ на него.
 
     Вы получите три фрагмента информации (в указанном порядке, каждый на отдельной строке):
     1. Вопрос собеседования (на русском языке) - <QUESTION>
@@ -46,12 +46,12 @@ def fill_qa_review_prompt(lang, question, answer, skill_level="Junior"):
     return prompt
 
 
-def generate_qa_review(lang, question, answer, llm_api, redis_host="localhost", redis_port=6379):
+def generate_qa_review(lang, question, answer, position, llm_api, redis_host="localhost", redis_port=6379):
     """Для админа, который вопросы набивает, оценивает корректность самого вопроса
     Вход: язык, вопрос, ответ
     Выход: общая оценка вопроса, перефраз вопроса, перефраз ответа, критика.
     """
-    prompt = fill_qa_review_prompt(lang, question, answer)
+    prompt = fill_qa_review_prompt(lang, question, answer, position)
     result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], {"question_score", "rephrased_que", "rephrased_ans", "critique"})
     return result
@@ -64,4 +64,5 @@ def test_qa_review(llm_api, redis_host="localhost", redis_port=6379):
         seen = set()
         return [x for x in lst if not (x in seen or seen.add(x))]
     """
-    return generate_qa_review(lang, question, answer, llm_api, redis_host, redis_port)
+    position = "Junior Developer"
+    return generate_qa_review(lang, question, answer, position, llm_api, redis_host, redis_port)
