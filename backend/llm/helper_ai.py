@@ -1,5 +1,5 @@
-from llm_api import common_llm_call
-from tools import parse_response
+from backend.llm.llm_api import common_llm_call
+from backend.llm.tools import parse_response
 
 
 def fill_helper_ai_prompt(lang, task, code, user_question):

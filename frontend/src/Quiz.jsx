@@ -1,17 +1,33 @@
 import React, { useState } from 'react';
+import axios from 'axios'; // <--- НЕ ЗАБУДЬТЕ ИМПОРТ
 
 function Quiz({ title, questions, onComplete }) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [score, setScore] = useState(0);
   const [showResults, setShowResults] = useState(false);
 
   const currentQuestion = questions[currentQuestionIndex];
 
   // Обработка клика по ответу
-  const handleAnswerClick = (isCorrect) => {
-    if (isCorrect) {
-      setScore(score + 1);
+  const handleAnswerClick = async (option) => {
+    const isCorrect = option.isCorrect;
+    
+    // --- ОТПРАВКА НА БЭКЕНД ---
+    try {
+        const userId = localStorage.getItem('currentCandidateId');
+        if (userId) {
+            await axios.post('http://localhost:8000/api/answers', {
+                user_id: parseInt(userId),
+                question_id: currentQuestion.id,
+                answer: option.answerText,
+                is_correct: isCorrect,
+                score: isCorrect ? 1 : 0 // 1 балл за правильный ответ
+            });
+            console.log("Ответ сохранен в БД");
+        }
+    } catch (error) {
+        console.error("Ошибка сохранения ответа:", error);
     }
+    // ---------------------------
 
     const nextQuestion = currentQuestionIndex + 1;
     if (nextQuestion < questions.length) {
@@ -26,7 +42,7 @@ function Quiz({ title, questions, onComplete }) {
       <div className="quiz-container">
         <h2>{title} — Завершено</h2>
         <p className="quiz-results">
-          Ваш результат сохранен.
+          Ваши ответы сохранены в базе данных.
         </p>
         <button className="big-button" onClick={onComplete}>
           Перейти к следующему этапу
@@ -35,10 +51,7 @@ function Quiz({ title, questions, onComplete }) {
     );
   }
 
-  // Защита от пустых данных
   if (!currentQuestion) return <div>Ошибка данных</div>;
-
-  // Если options пустые или не пришли
   const options = currentQuestion.answerOptions || [];
 
   return (
@@ -49,20 +62,18 @@ function Quiz({ title, questions, onComplete }) {
         <div className="question-count" style={{marginBottom: '1rem', opacity: 0.7}}>
           Вопрос {currentQuestionIndex + 1} из {questions.length}
         </div>
-        
-        {/* Текст вопроса */}
         <div className="question-text" style={{fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '2rem', minHeight: '60px'}}>
             {currentQuestion.questionText}
         </div>
       </div>
 
       <div className="answer-section" style={{display:'flex', flexDirection:'column', gap:'0.8rem'}}>
-        {options.length > 0 ? (
-          options.map((option, index) => (
+        {options.map((option, index) => (
             <button
               key={index}
               className="answer-button"
-              onClick={() => handleAnswerClick(option.isCorrect)}
+              // ВАЖНО: Передаем весь объект option, а не просто isCorrect
+              onClick={() => handleAnswerClick(option)} 
               style={{
                   padding: '1rem',
                   background: 'rgba(255,255,255,0.1)',
@@ -78,19 +89,7 @@ function Quiz({ title, questions, onComplete }) {
             >
               {option.answerText}
             </button>
-          ))
-        ) : (
-          <div style={{color: '#ff5555', border: '1px dashed #ff5555', padding: '1rem'}}>
-             ⚠️ У этого вопроса нет вариантов ответа. (Ошибка JSON в БД)
-             <br/>
-             <button 
-                onClick={() => handleAnswerClick(true)} // Пропускаем вопрос
-                style={{marginTop:'1rem', padding:'0.5rem', cursor:'pointer'}}
-             >
-                Пропустить (Debug Skip)
-             </button>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );

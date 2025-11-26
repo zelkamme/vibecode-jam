@@ -1,5 +1,5 @@
-from llm_api import common_llm_call
-from tools import parse_response
+from backend.llm.llm_api import common_llm_call
+from backend.llm.tools import parse_response
 
 
 def fill_code_review_prompt(lang, question, ideal_answer, user_answer, position):
@@ -39,6 +39,7 @@ def fill_code_review_prompt(lang, question, ideal_answer, user_answer, position)
     </USER_ANSWER>
     """
     return prompt
+
 
 def generate_code_review(lang, question, ideal_answer, user_answer, position, llm_api, redis_host="localhost", redis_port=6379):
     """Код ревью - общая и стилистическая оценки, критика:

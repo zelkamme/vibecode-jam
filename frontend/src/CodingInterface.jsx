@@ -14,6 +14,9 @@ function CodingInterface({ onComplete }) {
   const [loading, setLoading] = useState(true);
   const [debugInfo, setDebugInfo] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  
+  // Новый стейт для языка редактора (для подсветки синтаксиса)
+  const [editorLang, setEditorLang] = useState('python');
 
   // Ссылка на конец чата для автоскролла
   const chatEndRef = useRef(null);
@@ -26,14 +29,45 @@ function CodingInterface({ onComplete }) {
     codeHistory: []
   });
 
-  // 1. Загрузка задачи при старте
+  // 1. Инициализация: Определяем язык и загружаем задачу
   useEffect(() => {
-    const fetchTask = async () => {
+    const initInterface = async () => {
       const savedLevel = localStorage.getItem('candidateLevel') || 'Intern';
-      setDebugInfo(savedLevel);
+      const userId = localStorage.getItem('currentCandidateId');
       
+      setDebugInfo(savedLevel);
+
+      // ШАГ 1: Определяем язык программирования по вакансии пользователя
+      let detectedLang = 'python'; // Дефолт
+      
+      if (userId) {
+          try {
+              // Запрашиваем инфо о кандидате (предполагаем, что бэк возвращает поле "language")
+              const userRes = await axios.get(`http://localhost:8000/api/candidates/${userId}`);
+              const rawLang = userRes.data.language; // Например: "C++", "Java", "JavaScript"
+
+              if (rawLang) {
+                  // Маппинг названий с бэкенда в ID языков Monaco Editor
+                  const monacoMap = {
+                      'Python': 'python',
+                      'JavaScript': 'javascript',
+                      'Java': 'java',
+                      'C++': 'cpp',
+                      'Go': 'go'
+                  };
+                  detectedLang = monacoMap[rawLang] || 'python';
+              }
+          } catch (e) {
+              console.error("Не удалось определить язык вакансии, используем Python:", e);
+          }
+      }
+      setEditorLang(detectedLang);
+
+      // ШАГ 2: Загружаем задачу
       try {
-        const response = await axios.get(`/api/task/coding/${savedLevel}`);
+        const response = await axios.get(`http://localhost:8000/api/task/coding/${savedLevel}`, {
+            params: { user_id: userId } 
+        });
         const task = response.data;
         setTaskId(task.id);
 
@@ -41,34 +75,41 @@ function CodingInterface({ onComplete }) {
              setCode(`# ${task.description}`);
              setChatHistory([{ sender: 'ai', text: `**Статус:** ${task.title}\n\n${task.description}` }]);
         } else {
-            let initialCode = "# Напишите ваше решение здесь\n";
-            if (task.files && Array.isArray(task.files)) {
-                const mainFile = task.files.find(f => f.name === 'main.py');
-                if (mainFile) initialCode = mainFile.content;
+            let initialCode = "";
+            
+            // Пытаемся найти файл, подходящий под определенный язык
+            // (Если задача мультифайловая или универсальная)
+            if (task.files && Array.isArray(task.files) && task.files.length > 0) {
+                // Простая логика: берем первый файл, или ищем main.*
+                const mainFile = task.files.find(f => f.name.startsWith('main') || f.name.startsWith('index'));
+                initialCode = mainFile ? mainFile.content : task.files[0].content;
+            } else {
+                initialCode = "// Напишите ваше решение здесь\n";
             }
+            
             setCode(initialCode);
             
             // Первая запись истории кода
             telemetry.current.codeHistory.push(initialCode);
             
-            // Приветственное сообщение в чат с описанием задачи
+            // Приветственное сообщение
             setChatHistory([
               { 
                 sender: 'ai', 
-                text: `### Задача: ${task.title}\n\n${task.description}\n\n_Вы можете задавать мне вопросы по условию или синтаксису._` 
+                text: `### Задача: ${task.title}\n\n${task.description}\n\n_Язык среды: ${detectedLang.toUpperCase()}. Вы можете задавать вопросы._` 
               }
             ]);
         }
 
       } catch (error) {
-        console.error("Ошибка:", error);
+        console.error("Ошибка загрузки задачи:", error);
         setCode("# Ошибка соединения с сервером.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTask();
+    initInterface();
   }, []);
 
   // 2. Анти-чит слушатели
@@ -91,27 +132,30 @@ function CodingInterface({ onComplete }) {
   }, [chatHistory]);
 
   const handleCodeChange = (newCode) => {
-    // Детекция больших вставок (Copy-Paste)
     if (newCode && code && newCode.length - code.length > 50) {
         telemetry.current.largePastes++;
     }
     setCode(newCode || "");
   };
 
+  // --- ОБНОВЛЕННЫЙ ЗАПУСК КОДА ---
   const handleRunCode = async () => {
     if (isRunning) return;
     setIsRunning(true);
     
-    // Сохраняем снапшот кода для истории
+    // Сохраняем снапшот кода
     telemetry.current.codeHistory.push(code);
-    
     setOutput({ stdout: '', stderr: 'Запуск контейнера...' });
     
+    const userId = localStorage.getItem('currentCandidateId'); // Берем ID пользователя
+
     try {
-      const response = await axios.post('/api/run-code', {
+      // Отправляем user_id, чтобы бэк выбрал правильный Docker-образ (Python/Java/JS...)
+      const response = await axios.post('http://localhost:8000/api/run-code', {
         code: code,
-        language: 'python',
-        task_id: taskId
+        language: editorLang, // Можно передать для справки
+        task_id: taskId,
+        user_id: userId ? parseInt(userId) : null 
       });
       setOutput(response.data);
     } catch (error) {
@@ -132,11 +176,14 @@ function CodingInterface({ onComplete }) {
     try {
       const response = await axios.post('/api/chat', {
         message: userInput,
-        history: chatHistory // Отправляем контекст
+        history: chatHistory,
+        code_context: code,
+        task_id: taskId
       });
       setChatHistory(prev => [...prev, response.data]);
     } catch (error) {
-       setChatHistory(prev => [...prev, { sender: 'ai', text: '_AI сейчас недоступен. Попробуйте позже._' }]);
+        console.error(error);
+        setChatHistory(prev => [...prev, { sender: 'ai', text: '_AI сейчас недоступен._' }]);    
     }
   };
 
@@ -156,13 +203,12 @@ function CodingInterface({ onComplete }) {
             focusLost: telemetry.current.focusLost,
             mouseLeftWindow: telemetry.current.mouseLeftWindow,
             largePastes: telemetry.current.largePastes,
-            codeHistory: telemetry.current.codeHistory
+            codeHistory: telemetry.current.codeHistory,
+            coding_task_id: taskId // Передаем ID задачи для ревью
         });
-        // Передаем данные, полученные от бэка (там может быть score)
         onComplete(response.data); 
     } catch (error) {
         console.error("Ошибка сохранения:", error);
-        // Если бэк упал, всё равно пускаем дальше, но с нулевым скором
         onComplete({ finalScore: 0, ...telemetry.current });
     }
   };
@@ -181,15 +227,18 @@ function CodingInterface({ onComplete }) {
       {/* --- ЛЕВАЯ ПАНЕЛЬ: ЭДИТОР И ТЕРМИНАЛ --- */}
       <div className="left-panel" style={{ display: 'flex', flexDirection: 'column' }}>
         
-        {/* ВЕРХНЯЯ ЧАСТЬ: РЕДАКТОР (80%) */}
-        {/* Класс .split-80 должен быть определен в App.css (height: 80%) */}
+        {/* ВЕРХНЯЯ ЧАСТЬ: РЕДАКТОР */}
         <div className="split-80" style={{ display: 'flex', flexDirection: 'column' }}>
           
-          {/* Панель управления */}
           <div className="controls" style={{background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid #333'}}>
             <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
-                <span style={{fontWeight:'bold', color:'#aaa', fontSize:'0.9rem'}}>main.py</span>
-                <span style={{fontSize:'0.8rem', background:'#333', padding:'2px 6px', borderRadius:'4px'}}>{debugInfo}</span>
+                <span style={{fontWeight:'bold', color:'#aaa', fontSize:'0.9rem'}}>editor.src</span>
+                <span style={{fontSize:'0.8rem', background:'#005bb5', padding:'2px 6px', borderRadius:'4px', color: 'white'}}>
+                    {editorLang.toUpperCase()}
+                </span>
+                <span style={{fontSize:'0.8rem', background:'#333', padding:'2px 6px', borderRadius:'4px'}}>
+                    {debugInfo}
+                </span>
             </div>
             
             <div>
@@ -207,11 +256,11 @@ function CodingInterface({ onComplete }) {
             </div>
           </div>
 
-          {/* Monaco Editor */}
           <div className="editor-container" style={{flexGrow: 1}}>
             <Editor 
               height="100%" 
-              language="python" 
+              // Используем динамический язык
+              language={editorLang} 
               theme="vs-dark" 
               value={code} 
               onChange={handleCodeChange}
@@ -226,8 +275,7 @@ function CodingInterface({ onComplete }) {
           </div>
         </div>
 
-        {/* НИЖНЯЯ ЧАСТЬ: КОНСОЛЬ (20%) */}
-        {/* Класс .split-20 должен быть определен в App.css (height: 20%) */}
+        {/* НИЖНЯЯ ЧАСТЬ: КОНСОЛЬ */}
         <div className="split-20" style={{background: '#0d0d0d', borderTop: '2px solid #333', overflow: 'hidden', display:'flex', flexDirection:'column'}}>
             <div style={{padding: '5px 10px', background: '#1a1a1a', color: '#888', fontSize:'0.8rem', fontWeight:'bold', textTransform:'uppercase'}}>
                 Terminal Output
@@ -253,13 +301,11 @@ function CodingInterface({ onComplete }) {
       <div className="right-panel">
         <div className="chat-container">
           
-          {/* Заголовок чата */}
           <div style={{padding:'1rem', borderBottom:'1px solid rgba(255,255,255,0.1)', background:'rgba(0,0,0,0.2)'}}>
             <h3 style={{margin:0, fontSize:'1.1rem', color:'white'}}>AI Interviewer</h3>
             <p style={{margin:0, fontSize:'0.8rem', opacity:0.6}}>Задавайте вопросы по задаче</p>
           </div>
 
-          {/* Сообщения */}
           <div className="chat-messages">
             {chatHistory.map((msg, index) => (
               <div key={index} className={`message ${msg.sender}`}>
@@ -269,7 +315,6 @@ function CodingInterface({ onComplete }) {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Ввод */}
           <form className="chat-input" onSubmit={handleSendMessage}>
             <input 
                 type="text" 
