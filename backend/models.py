@@ -27,6 +27,7 @@ class User(SQLModel, table=True):
     # или вычислять динамически. Для простоты храним тут:
     level: str 
     resume_path: Optional[str] = None  
+
     sessions: List["TestSession"] = Relationship(back_populates="user")
 
 # 3. КОНТЕЙНЕРЫ И ТЕГИ

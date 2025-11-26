@@ -1,5 +1,5 @@
-from llm_api import cached_chat
-from tools import parse_response
+from .llm_api import cached_chat
+from .tools import parse_response
 
 
 def fill_qa_review_prompt(lang, question, answer, skill_level="Junior"):

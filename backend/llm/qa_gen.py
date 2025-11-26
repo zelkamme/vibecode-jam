@@ -1,5 +1,5 @@
-from llm_api import cached_chat
-from tools import parse_json_list
+from .llm_api import cached_chat
+from .tools import parse_json_list, parse_response
 
 
 def fill_theory_qa_gen_prompt(position, requirements, resume, que_num=5):

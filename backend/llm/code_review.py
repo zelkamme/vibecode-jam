@@ -1,5 +1,5 @@
-from llm_api import cached_chat
-from tools import parse_response
+from .llm_api import cached_chat # ИСПРАВЛЕНО
+from .tools import parse_response
 
 
 def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_level="Junior"):

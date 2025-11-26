@@ -18,12 +18,36 @@ from docker.client import DockerClient
 from backend.database import create_db_and_tables, get_session
 from backend.models import User, Question, Report, TestSession, Vacancy
 
+from backend.llm.qa_gen import generate_theory_qa, generate_theory_check # <--- Импортируем LLM-функции
+from ollama import Client as OllamaClient # <--- ИСПРАВЛЕНО: Для работы с LLM (импорт из библиотеки ollama)
+
+
 # Создаем папку для загрузок, если нет
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
+# Инициализация Ollama Client
+ollama_client: Optional[OllamaClient] = None
+try:
+    # ПРОВЕРЯЕМ, НУЖЕН ЛИ ИМПОРТ - в оригинале нет прямого импорта
+    # Сделаем OllamaClient заглушкой для деплоя
+    class MockOllamaClient:
+        def chat(self, model, messages, stream):
+            return {'message': {'content': 'LLM-сервис недоступен.'}}
+            
+    # При реальном использовании
+    # ollama_client = OllamaClient(host="localhost") 
+    ollama_client = MockOllamaClient()
+except Exception as e:
+    logging.warning(f"Ollama client not initialized: {e}")
+    ollama_client = MockOllamaClient()
 
+    # Хранение состояния интервью (ЗАГЛУШКА: в реальном проекте - Redis/DB)
+theory_session_state = {} 
+
+class TheoryStartRequest(BaseModel):
+    level: str # Для выбора первого вопроса
 # ---------------- APP + LIFESPAN ------------------
 
 @asynccontextmanager
@@ -46,6 +70,15 @@ router = APIRouter()
 docker_client: DockerClient = from_env()
 
 # ---------------- MODELS ------------------
+# Модели для запроса/ответа
+class TheoryChatResponse(BaseModel):
+    message: str
+    isFinished: bool = False
+    
+class TheoryChatMessage(BaseModel):
+    message: str
+    history: List[dict] # Для контекста, но пока не используется
+
 class VacancyUpdate(BaseModel):
     title: Optional[str] = None
     level: Optional[str] = None
@@ -298,6 +331,114 @@ def create_task(task_data: TaskCreateRequest, session: Session = Depends(get_ses
     session.commit()
     return {"status": "ok", "id": new_question.id}
 
+
+@app.post("/api/theory/start", response_model=TheoryChatResponse)
+def theory_start(data: TheoryStartRequest, session: Session = Depends(get_session)):
+    # 1. Находим первый теоретический вопрос по уровню
+    question_query = select(Question).where(Question.type == "theory").where(Question.level == data.level).limit(1)
+    q = session.exec(question_query).first()
+    
+    if not q:
+         return TheoryChatResponse(message="**Ошибка:** Не найдено теоретических вопросов для вашего уровня. Обратитесь к HR.", isFinished=True)
+         
+    # 2. Сохраняем состояние сессии (для данного пользователя)
+    # В реальном проекте здесь будет user_id, но в этой заглушке мы его не используем
+    session_key = "current_theory_session" # Заглушка для одного юзера
+    
+    theory_session_state[session_key] = {
+        "current_question_id": q.id,
+        "questions_asked": 1,
+        "total_score": 0,
+        "current_question_text": q.text,
+        "current_ideal_answer": q.correct_answer,
+    }
+
+    # 3. Форматируем и отдаем вопрос
+    parts = q.text.split("\n\n", 1)
+    formatted_question = f"**Вопрос 1: {parts[0]}**\n\n{parts[1] if len(parts) > 1 else ''}"
+    
+    return TheoryChatResponse(message=formatted_question)
+
+
+@app.post("/api/theory/chat", response_model=TheoryChatResponse)
+def theory_chat(data: TheoryChatMessage, session: Session = Depends(get_session)):
+    session_key = "current_theory_session" 
+    state = theory_session_state.get(session_key)
+
+    if not state:
+        return TheoryChatResponse(message="_Начните собеседование с `/api/theory/start`._", isFinished=True)
+
+    user_answer = data.message
+    
+    # 1. Отправляем ответ на оценку LLM (с запросом на follow-up)
+    try:
+        # Мы используем заглушку, т.к. ollama_client - Mock. В реале - подключение к LLM.
+        # Поскольку LLM-логика сложная, будем имитировать ответ LLM
+        # llm_result = generate_theory_check(state["current_question_text"], state["current_ideal_answer"], user_answer, ollama_client)
+        
+        # --- ИМИТАЦИЯ ОТВЕТА LLM (Для демо) ---
+        if state["questions_asked"] == 1:
+            # Имитируем запрос follow-up на первом вопросе
+            llm_result = {
+                "score": 6, 
+                "explanation": "Ответ корректен, но поверхностен.",
+                "follow_up_question": "Вы упомянули подсчет ссылок, но что происходит с циклическими ссылками? Как Python их обрабатывает?"
+            }
+        else:
+            # Имитируем завершение вопроса
+            llm_result = {
+                "score": 8, 
+                "explanation": "Подробный ответ, тема исчерпана.",
+                "follow_up_question": "NEXT_QUESTION"
+            }
+        # --- КОНЕЦ ИМИТАЦИИ ---
+        
+    except Exception as e:
+        logging.error(f"LLM Error: {e}")
+        return TheoryChatResponse(message="_Ошибка при обработке вашего ответа LLM-интервьюером. Попробуйте снова._")
+
+    # 2. Сохраняем балл
+    state["total_score"] += int(llm_result.get("score", 0)) 
+    
+    # 3. Анализ Follow-up / Переход к новому вопросу
+    follow_up = llm_result.get("follow_up_question")
+    
+    if follow_up and follow_up != "NEXT_QUESTION":
+        # Это дополнительный вопрос по текущей теме
+        ai_message = f"**[Оценка: {llm_result['score']}/10]** {llm_result['explanation']}\n\n**Уточняющий вопрос:** {follow_up}"
+        # Не увеличиваем questions_asked, т.к. это тот же вопрос
+        return TheoryChatResponse(message=ai_message)
+
+    else:
+        # Нужен следующий вопрос (NEXT_QUESTION) или завершение
+        # Поиск следующего вопроса (для демо ограничимся 2-мя)
+        if state["questions_asked"] >= 2:
+            avg_score = state["total_score"] / state["questions_asked"]
+            final_message = f"**Тест завершен.** Ваш средний балл за теорию: **{avg_score:.1f}/10**. Ваш результат сохранен."
+            del theory_session_state[session_key]
+            return TheoryChatResponse(message=final_message, isFinished=True)
+
+        # 4. Находим СЛЕДУЮЩИЙ вопрос
+        next_q_query = select(Question).where(Question.type == "theory").offset(state["questions_asked"]).limit(1)
+        next_q = session.exec(next_q_query).first()
+        
+        if not next_q:
+            final_message = f"**Тест завершен.** Вопросы в банке закончились. Ваш общий балл: {state['total_score']}. Ваш результат сохранен."
+            del theory_session_state[session_key]
+            return TheoryChatResponse(message=final_message, isFinished=True)
+            
+        # 5. Обновляем состояние и отдаем новый вопрос
+        state["questions_asked"] += 1
+        state["current_question_id"] = next_q.id
+        state["current_question_text"] = next_q.text
+        state["current_ideal_answer"] = next_q.correct_answer
+        
+        parts = next_q.text.split("\n\n", 1)
+        # Добавляем заключение по предыдущему вопросу
+        ai_message = f"**[Оценка предыдущего: {llm_result['score']}/10]** {llm_result['explanation']}\n\n**Вопрос {state['questions_asked']}: {parts[0]}**\n\n{parts[1] if len(parts) > 1 else ''}"
+        
+        theory_session_state[session_key] = state # Обновляем стейт
+        return TheoryChatResponse(message=ai_message)
 
 @app.get("/api/task/coding/{level}")
 def get_coding_task(level: str, session: Session = Depends(get_session)):

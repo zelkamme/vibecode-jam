@@ -10,7 +10,7 @@ function PsyTest({ onComplete }) {
     // Загружаем вопросы из БД
     axios.get('http://localhost:8000/api/questions/psy')
       .then(response => {
-        setQuestions(response.data);
+        setQuestions(response.data); // Бэк теперь возвращает правильный формат
         setLoading(false);
       })
       .catch(error => {
@@ -19,7 +19,7 @@ function PsyTest({ onComplete }) {
       });
   }, []);
 
-  if (loading) return <div className="centered-container"><h2>Загрузка теста...</h2></div>;
+  if (loading) return <div className="centered-container"><h2>Загрузка теста Soft Skills...</h2></div>;
 
   if (questions.length === 0) {
     return (
@@ -27,9 +27,8 @@ function PsyTest({ onComplete }) {
         <div className="glass-card">
           <h2>Вопросов пока нет :(</h2>
           <p style={{ opacity: 0.7, marginBottom: '1.5rem' }}>
-            База данных пуста. Добавьте вопросы через админку или включите автозаполнение.
+            База данных пуста. Запустите seed_questions.py на бэкенде.
           </p>
-          {/* Вот кнопка, которая вызывает onComplete и пускает дальше */}
           <button className="big-button" onClick={onComplete}>
             Пропустить этот этап
           </button>
@@ -40,7 +39,7 @@ function PsyTest({ onComplete }) {
   return (
     <div className="centered-container">
       <Quiz 
-        title="Этап 1: Психологический тест"
+        title="Этап 1: Soft Skills & Психология"
         questions={questions}
         onComplete={onComplete}
       />
