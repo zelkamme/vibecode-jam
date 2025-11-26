@@ -1,5 +1,5 @@
-from .llm_api import cached_chat
-from .tools import parse_response
+from backend.llm.llm_api import cached_chat
+from backend.llm.tools import parse_response
 
 
 def fill_helper_ai_prompt(lang, task, code, user_question):

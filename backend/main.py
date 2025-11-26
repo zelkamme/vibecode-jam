@@ -18,10 +18,14 @@ from docker.client import DockerClient
 from backend.database import create_db_and_tables, get_session
 from backend.models import User, Question, Report, TestSession, Vacancy, UserAnswer
 
-from backend.llm.qa_gen import generate_theory_qa, generate_theory_check # <--- Импортируем LLM-функции
+from backend.llm.qa_gen import generate_theory_qa, generate_theory_check
+from backend.llm.helper_ai import generate_helper_ai  
 from ollama import Client as OllamaClient # <--- ИСПРАВЛЕНО: Для работы с LLM (импорт из библиотеки ollama)
-
-
+from backend.llm.code_review import generate_code_review
+from backend.llm.unit_tests_gen import generate_unittests
+# --- Добавь это после импортов ---
+REDIS_HOST = "localhost"
+REDIS_PORT = 6379
 # Создаем папку для загрузок, если нет
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -64,7 +68,8 @@ except Exception as e:
 # Хранение состояния интервью (ЗАГЛУШКА: в реальном проекте - Redis/DB)
 theory_session_state = {} 
 class TheoryStartRequest(BaseModel):
-    level: str # Для выбора первого вопроса
+    level: str
+    user_id: int 
 # ---------------- APP + LIFESPAN ------------------
 
 @asynccontextmanager
@@ -92,9 +97,11 @@ class TheoryChatResponse(BaseModel):
     message: str
     isFinished: bool = False
     
+# Найдите эту модель в main.py и добавьте user_id
 class TheoryChatMessage(BaseModel):
     message: str
-    history: List[dict] # Для контекста, но пока не используется
+    history: List[dict]
+    user_id: int  # <--- ДОБАВЛЕНО ПОЛЕ
 
 class UserAnswerIn(BaseModel):
     user_id: int
@@ -143,6 +150,11 @@ class RunCodeRequest(BaseModel):
 class ChatMessage(BaseModel):
     message: str
     history: List[dict]
+    user_id: Optional[int] = None
+    question_id: Optional[int] = None
+    # Новые поля для кодинга:
+    code_context: Optional[str] = None 
+    task_id: Optional[int] = None
 
 class IntegrityPayload(BaseModel):
     user_id: int
@@ -150,6 +162,7 @@ class IntegrityPayload(BaseModel):
     mouseLeftWindow: int
     largePastes: int
     codeHistory: List[str]
+    coding_task_id: Optional[int] = None  # <--- У ТЕБЯ НЕТ ЭТОЙ СТРОКИ. ДОБАВЬ ЕЁ.
 
 # ---------------- ENDPOINTS ------------------
 
@@ -391,55 +404,46 @@ def create_task(task_data: TaskCreateRequest, session: Session = Depends(get_ses
 
 @app.post("/api/theory/start", response_model=TheoryChatResponse)
 def theory_start(data: TheoryStartRequest, session: Session = Depends(get_session)):
-    # 1. Находим первый теоретический вопрос по уровню
-    question_query = select(Question).where(Question.type == "theory").where(Question.level == data.level).limit(1)
-    q = session.exec(question_query).first()
+    # 1. Находим теоретический вопрос
+    q = session.exec(select(Question).where(Question.type == "theory").where(Question.level == data.level).limit(1)).first()
     
+    # Фолбек, если вопросов по уровню нет
     if not q:
-         return TheoryChatResponse(message="**Ошибка:** Не найдено теоретических вопросов для вашего уровня. Обратитесь к HR.", isFinished=True)
-         
-    # 2. Сохраняем состояние сессии (для данного пользователя)
-    session_key = "current_theory_session" # Заглушка для одного юзера
+         q = session.exec(select(Question).where(Question.type == "theory").limit(1)).first()
+         if not q:
+            return TheoryChatResponse(message="Ошибка: Вопросов нет в базе.", isFinished=True)
+
+    # 2. Ищем СУЩЕСТВУЮЩУЮ или СОЗДАЕМ НОВУЮ сессию в БД
+    db_session = session.exec(
+        select(TestSession)
+        .where(TestSession.user_id == data.user_id)
+        .where(TestSession.status == "started")
+        .order_by(TestSession.created_at.desc())
+    ).first()
+
+    if not db_session:
+       
+        db_session = TestSession(user_id=data.user_id, status="started")
+        session.add(db_session)
+        session.commit()
+        session.refresh(db_session)
+    else:
+        print(f"♻️ Использую существующую сессию {db_session.id} для User {data.user_id}")
+
+    # 3. Сохраняем состояние в RAM. 
+    # ВАЖНО: Мы сохраняем db_session.id внутри словаря
+    session_key = f"theory_user_{data.user_id}"
     
     theory_session_state[session_key] = {
+        "db_session_id": db_session.id,  # <--- ВОТ КЛЮЧЕВОЙ МОМЕНТ
         "current_question_id": q.id,
         "questions_asked": 1,
         "total_score": 0,
         "current_question_text": q.text,
         "current_ideal_answer": q.correct_answer,
-        "topic_attempts": 0 # НОВОЕ ПОЛЕ: 0 - основной вопрос, 1 - уточняющий
+        "topic_attempts": 0 
     }
 
-    # 3. Форматируем и отдаем вопрос
-    parts = q.text.split("\n\n", 1)
-    formatted_question = f"**Вопрос 1: {parts[0]}**\n\n{parts[1] if len(parts) > 1 else ''}"
-    
-    return TheoryChatResponse(message=formatted_question)
-
-
-@app.post("/api/theory/start", response_model=TheoryChatResponse)
-def theory_start(data: TheoryStartRequest, session: Session = Depends(get_session)):
-    # 1. Находим первый теоретический вопрос по уровню
-    question_query = select(Question).where(Question.type == "theory").where(Question.level == data.level).limit(1)
-    q = session.exec(question_query).first()
-    
-    if not q:
-         return TheoryChatResponse(message="**Ошибка:** Не найдено теоретических вопросов для вашего уровня. Обратитесь к HR.", isFinished=True)
-         
-    # 2. Сохраняем состояние сессии (для данного пользователя)
-    # В реальном проекте здесь будет user_id, но в этой заглушке мы его не используем
-    session_key = "current_theory_session" # Заглушка для одного юзера
-    
-    theory_session_state[session_key] = {
-        "current_question_id": q.id,
-        "questions_asked": 1,
-        "total_score": 0,
-        "current_question_text": q.text,
-        "current_ideal_answer": q.correct_answer,
-        "topic_attempts": 0 # 0 - основной вопрос, 1 - уточняющий
-    }
-
-    # 3. Форматируем и отдаем вопрос
     parts = q.text.split("\n\n", 1)
     formatted_question = f"**Вопрос 1: {parts[0]}**\n\n{parts[1] if len(parts) > 1 else ''}"
     
@@ -448,81 +452,148 @@ def theory_start(data: TheoryStartRequest, session: Session = Depends(get_sessio
 
 @app.post("/api/theory/chat", response_model=TheoryChatResponse)
 def theory_chat(data: TheoryChatMessage, session: Session = Depends(get_session)):
-    session_key = "current_theory_session" 
+    # Получаем состояние из RAM по ID пользователя
+    session_key = f"theory_user_{data.user_id}" 
     state = theory_session_state.get(session_key)
 
     if not state:
-        return TheoryChatResponse(message="_Начните собеседование с `/api/theory/start`._", isFinished=True)
+        return TheoryChatResponse(message="_Ошибка сессии. Обновите страницу и начните заново._", isFinished=True)
 
     user_answer = data.message
     
-    # 1. Отправляем ответ на оценку LLM (с запросом на follow-up)
+    # 1. Спрашиваем LLM оценку
     try:
-        # ИНТЕГРАЦИЯ LLM: Вызываем реальную функцию проверки. 
-        # Если ollama_client - Mock, функция generate_theory_check вызовет mock.chat
+        # Убедитесь, что ollama_client инициализирован выше в коде
         llm_result = generate_theory_check(
             state["current_question_text"], 
             state["current_ideal_answer"], 
             user_answer, 
             ollama_client
         )
-        
     except Exception as e:
-        # При ошибке LLM-сервиса, даем технический ответ и завершаем сессию, чтобы не зацикливаться
-        logging.error(f"LLM Error: {e}")
-        return TheoryChatResponse(message="_Ошибка при обработке вашего ответа LLM-интервьюером. Тест завершен (Технический сбой)._", isFinished=True)
+        print(f"Error LLM: {e}")
+        llm_result = {"score": 5, "follow_up_question": "NEXT_QUESTION"}
 
-    # 2. Сохраняем балл
-    state["total_score"] += int(llm_result.get("score", 0)) 
+    score = int(llm_result.get("score", 0))
+    state["total_score"] += score
     
-    # 3. Анализ Follow-up / Переход к новому вопросу
+    # =======================================================
+    # 💾 БЛОК СОХРАНЕНИЯ В БАЗУ ДАННЫХ (ЭТОГО НЕ ХВАТАЛО)
+    # =======================================================
+    try:
+        # Достаем ID сессии, который мы сохранили в theory_start
+        current_sess_id = state["db_session_id"]
+        current_q_id = state["current_question_id"]
+
+        # Проверка на дубликаты (чтобы не записать ответ дважды при лагах)
+        existing_answer = session.exec(
+            select(UserAnswer)
+            .where(UserAnswer.session_id == current_sess_id)
+            .where(UserAnswer.question_id == current_q_id)
+        ).first()
+
+        if not existing_answer:
+            # Создаем новую запись
+            db_answer = UserAnswer(
+                session_id=current_sess_id,
+                question_id=current_q_id,
+                user_answer_text=user_answer,
+                score=score,            
+                is_correct=(score >= 6)
+            )
+            session.add(db_answer)
+            session.commit()
+           
+        else:
+            # Если это уточняющий вопрос - обновляем существующий ответ
+            
+            if score > existing_answer.score: # Берем лучший балл
+                 existing_answer.score = score
+            existing_answer.user_answer_text += f" | {user_answer}"
+            session.add(existing_answer)
+            session.commit()
+
+    except Exception as e:
+        print(f"❌ ОШИБКА SQL ПРИ СОХРАНЕНИИ ОТВЕТА: {e}")
+    # =======================================================
+
+    # 3. Логика перехода (Follow-up или Next)
     follow_up = llm_result.get("follow_up_question")
     
     if follow_up and follow_up != "NEXT_QUESTION" and state["topic_attempts"] == 0:
-        # ЭТО УТОЧНЯЮЩИЙ ВОПРОС: задается только один раз (topic_attempts == 0)
-        
-        # УДАЛЕНО: Оценка и объяснение пользователю не выводятся
         ai_message = f"**Уточняющий вопрос:** {follow_up}"
-        state["topic_attempts"] = 1 # Устанавливаем флаг, что уточняющий вопрос задан
+        state["topic_attempts"] = 1
         theory_session_state[session_key] = state
         return TheoryChatResponse(message=ai_message)
 
     else:
-        # ЭТО ПЕРЕХОД К СЛЕДУЮЩЕМУ ВОПРОСУ ИЛИ ЗАВЕРШЕНИЕ
-        
-        # Нужен следующий вопрос (NEXT_QUESTION) или завершение
-        state["questions_asked"] += 1 # Увеличиваем счетчик вопросов/тем
+        # СЛЕДУЮЩИЙ ВОПРОС
+        state["questions_asked"] += 1
 
-        # Ограничение на количество тем (для демо)
+        # Лимит вопросов (например, 2)
         if state["questions_asked"] > 2: 
             avg_score = state["total_score"] / (state["questions_asked"] - 1)
-            final_message = f"**Тест завершен.** Ваш средний балл за теорию: **{avg_score:.1f}/10**. Ваш результат сохранен. **Переход к следующему этапу...**"
+            final_message = f"**Тест завершен.** Ваш средний балл: **{avg_score:.1f}/10**. Результат сохранен. Переход к кодингу..."
             del theory_session_state[session_key]
             return TheoryChatResponse(message=final_message, isFinished=True)
 
-        # 4. Находим СЛЕДУЮЩИЙ вопрос
-        next_q_query = select(Question).where(Question.type == "theory").offset(state["questions_asked"] - 1).limit(1)
-        next_q = session.exec(next_q_query).first()
+        # Ищем следующий вопрос
+        next_q = session.exec(select(Question).where(Question.type == "theory").offset(state["questions_asked"] - 1).limit(1)).first()
         
         if not next_q:
-            # Вопросы закончились
             avg_score = state["total_score"] / (state["questions_asked"] - 1)
-            final_message = f"**Тест завершен.** Вопросы в банке закончились. Ваш средний балл: {avg_score:.1f}/10. Ваш результат сохранен. **Переход к следующему этапу...**"
+            final_message = f"**Вопросы закончились.** Балл: {avg_score:.1f}/10. Переход..."
             del theory_session_state[session_key]
             return TheoryChatResponse(message=final_message, isFinished=True)
             
-        # 5. Обновляем состояние и отдаем новый вопрос
         state["current_question_id"] = next_q.id
         state["current_question_text"] = next_q.text
         state["current_ideal_answer"] = next_q.correct_answer
-        state["topic_attempts"] = 0 # Сбрасываем счетчик попыток для новой темы
+        state["topic_attempts"] = 0
         
         parts = next_q.text.split("\n\n", 1)
-        # УДАЛЕНО: Оценка предыдущего вопроса не выводится
         ai_message = f"**Вопрос {state['questions_asked']}: {parts[0]}**\n\n{parts[1] if len(parts) > 1 else ''}"
         
-        theory_session_state[session_key] = state # Обновляем стейт
+        theory_session_state[session_key] = state
         return TheoryChatResponse(message=ai_message)
+    
+@app.post("/api/chat")
+def handle_coding_chat_assist(payload: ChatMessage, session: Session = Depends(get_session)):
+    """AI-помощник в IDE. Анализирует код и дает подсказки."""
+    
+    user_msg = payload.message
+    current_code = payload.code_context or "" # Код из редактора
+    task_id = payload.task_id
+
+    # 1. Получаем текст задачи из БД
+    task_text = "General Python Task"
+    if task_id:
+        task_q = session.get(Question, task_id)
+        if task_q:
+            task_text = task_q.text
+
+    
+    
+    try:
+        # 2. Вызываем твой файл helper_ai.py
+        helper_response = generate_helper_ai(
+            lang="Python", 
+            task=task_text,
+            code=current_code,
+            user_question=user_msg,
+            ollama=ollama_client,
+            redis_host=REDIS_HOST,
+            redis_port=REDIS_PORT
+        )
+        
+        # helper_ai возвращает dict: {'suggestion': 'Текст подсказки'}
+        ai_text = helper_response.get("suggestion", "Я не смог сформулировать подсказку, попробуйте перефразировать.")
+        
+    except Exception as e:
+        print(f"Ошибка Helper AI: {e}")
+        ai_text = "Извините, AI-мозги сейчас отключены (ошибка соединения)."
+
+    return {"sender": "ai", "text": ai_text}
     
 @app.get("/api/task/coding/{level}")
 def get_coding_task(level: str, session: Session = Depends(get_session)):
@@ -699,144 +770,239 @@ async def run_code(payload: RunCodeRequest, session: Session = Depends(get_sessi
 # ---------------- FINISH TEST ------------------
 
 # 2. СОХРАНЕНИЕ РЕЗУЛЬТАТОВ (Обновляем analyze-integrity)
+
 @app.post("/api/analyze-integrity")
-async def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_session)):
-    # 1. Находим юзера и сессию
+def analyze_integrity(payload: IntegrityPayload, session: Session = Depends(get_session)):
+    
+    
+    # 1. Поиск пользователя
     user = session.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
-    last_session = session.exec(
+    
+    # 1. Сначала ищем ту сессию, которая сейчас "В ПРОЦЕССЕ" (куда писал theory_chat)
+    active_session = session.exec(
         select(TestSession)
         .where(TestSession.user_id == user.id)
+        .where(TestSession.status == "started") # <--- Самое важное условие
         .order_by(TestSession.created_at.desc())
     ).first()
 
+    if active_session:
+        last_session = active_session
+        
+    else:
+        # 2. Если активной нет (вдруг уже закрыли?), берем самую последнюю по времени (фолбек)
+        print(" Активной сессии нет, ищу последнюю архивную...")
+        last_session = session.exec(
+            select(TestSession)
+            .where(TestSession.user_id == user.id)
+            .order_by(TestSession.created_at.desc())
+        ).first()
+
     if not last_session:
-        # Если сессии нет (странно, но бывает), создаем новую завершенную
+        print(" ОШИБКА: Сессий вообще нет! Создаю аварийную.")
         last_session = TestSession(user_id=user.id, status="completed")
         session.add(last_session)
         session.commit()
         session.refresh(last_session)
-    else:
-        last_session.status = "completed"
-        session.add(last_session)
-
-    # 2. Расчет Integrity Score (простая логика)
-    integrity_score = 100
-    integrity_score -= (payload.focusLost * 2)
-    integrity_score -= (payload.mouseLeftWindow * 1)
-    integrity_score -= (payload.largePastes * 10)
-    if integrity_score < 0: integrity_score = 0
-
-    # 3. Расчет Final Score (заглушка, в идеале считать по ответам Psy/Theory/Code)
-    # Для демо ставим случайный высокий балл, если integrity хороший
- # 3. Расчет Final Score (НОВАЯ ЛОГИКА)
     
-    # Находим все вопросы и ответы для этой сессии
-    all_answers = session.exec(
-        select(UserAnswer, Question)
-        .join(Question)
-        .where(UserAnswer.session_id == last_session.id)
+    session_id = last_session.id
+    print(f" Работаем с сессией ID: {session_id}")
+
+    # =========================================================
+    # 🛠️ БЛОК ОТЛАДКИ (Показывает, что реально есть в БД) 🛠️
+    # =========================================================
+    print("\n🔎 [DEBUG] Проверка содержимого таблицы UserAnswer:")
+    
+    raw_answers = session.exec(
+        select(UserAnswer).where(UserAnswer.session_id == session_id)
     ).all()
     
-    # 3.1. Инициализация баллов
-    max_score_theory = 0
-    max_score_coding = 0
-    max_score_psy = 0
+    print(f" Найдено записей ответов: {len(raw_answers)}")
     
-    # 3.2. Сбор баллов
-    for answer, question in all_answers:
-        if question.type == 'psy':
-            # Максимум за Soft Skills: 30
-            # Считаем сумму баллов (если в UserAnswer.score 1 за правильный, 0 за непр.)
-            max_score_psy += answer.score 
+    if len(raw_answers) == 0:
+        print(" ВНИМАНИЕ: База ответов пуста! Значит theory_chat не сохранил данные.")
+        print(" Проверьте функцию theory_chat в main.py (там должен быть session.add и commit)")
+    else:
+        for idx, ans in enumerate(raw_answers):
+            # Пробуем узнать тип вопроса для каждой записи
+            q_type = "Unknown"
+            q_obj = session.get(Question, ans.question_id)
+            if q_obj:
+                q_type = q_obj.type
             
-        elif question.type == 'theory':
-            # Максимум за Теорию: 30
-            # Суммируем баллы от LLM (1-10)
-            max_score_theory += answer.score
+            print(f"   [{idx+1}] Тип: {q_type} | Score: {ans.score} | Ответ: '{str(ans.user_answer_text)[:30]}...'")
+    print("------------------------------------------\n")
+    # =========================================================
+
+    # 3. Разделение ответов по типам (Теория / Психология)
+    # Делаем JOIN с таблицей вопросов
+    results = session.exec(
+        select(UserAnswer, Question)
+        .join(Question, UserAnswer.question_id == Question.id)
+        .where(UserAnswer.session_id == session_id)
+    ).all()
+
+    theory_answers = [ans for ans, q in results if q.type == 'theory']
+    psy_answers = [ans for ans, q in results if q.type == 'psy']
+
+    # 4. Расчет баллов за ТЕОРИЮ (Сумма баллов / Максимум)
+    if theory_answers:
+        total_theory_score = sum([a.score for a in theory_answers]) # Сумма оценок (например, 8 + 7 + 10 = 25)
+        max_possible_theory = len(theory_answers) * 10             # Максимум (3 вопроса * 10 = 30)
+        
+        if max_possible_theory > 0:
+            theory_score_percent = (total_theory_score / max_possible_theory) * 100
+        else:
+            theory_score_percent = 0
             
-        elif question.type == 'coding':
-            # Баллы за Кодинг: 40 (заглушка, т.к. нет LLM-ревью)
-            # В реале - вызов LLM-ревью и сохранение. Пока что, просто ставим 40, если есть код
-            max_score_coding = 40 
-            
-    # 3.3. Нормализация (30/30/40)
-    
-    # --- SOFT SKILLS (Max 30%) ---
-    # Допустим, всего Soft Skills вопросов: 3. Max score: 3. 3/3*30=30
-    total_psy_questions = session.exec(select(Question).where(Question.type == 'psy')).count()
-    psy_score_normalized = (max_score_psy / max(total_psy_questions, 1)) * 30
-    
-    # --- ТЕОРИЯ (Max 30%) ---
-    # Допустим, всего Теоретических вопросов: 3. Max score за вопрос: 10. Max score: 30. 
-    total_theory_questions = session.exec(select(Question).where(Question.type == 'theory')).count()
-    theory_score_normalized = (max_score_theory / max(total_theory_questions * 10, 1)) * 30
-    
-    # --- КОДИНГ (Max 40%) ---
-    # Здесь нужна логика LLM-ревью. Для простоты:
-    # Если есть запись с кодом: 40. Иначе: 0.
-    coding_score_normalized = 0
-    has_coding_answer = session.exec(
-        select(UserAnswer)
-        .join(Question)
-        .where(UserAnswer.session_id == last_session.id)
-        .where(Question.type == 'coding')
-    ).first()
-    
-    if has_coding_answer:
-        # В реале - LLM-ревью. Здесь просто: если отвечал - 40
-        coding_score_normalized = 40 
+        print(f" ТЕОРИЯ: Набрано {total_theory_score} из {max_possible_theory} ({theory_score_percent:.1f}%)")
+    else:
+        print(" ТЕОРИЯ: Ответов нет. Оценка 0%.")
+        theory_score_percent = 0
 
-    # --- ФИНАЛЬНЫЙ СЧЕТ ---
-    final_score = int(psy_score_normalized + theory_score_normalized + coding_score_normalized)
+    # 5. Расчет баллов за SOFT SKILLS (Процент правильных)
+    if psy_answers:
+        psy_correct = len([a for a in psy_answers if a.is_correct])
+        psy_score_percent = (psy_correct / len(psy_answers)) * 100
+        print(f" SOFT SKILLS: Правильных {psy_correct} из {len(psy_answers)} ({psy_score_percent:.1f}%)")
+    else:
+        # Если вопросов не было, даем 100% кредит доверия
+        print(" SOFT SKILLS: Вопросов не было. Оценка 100%.")
+        psy_score_percent = 100 
 
-    # 4. Сохраняем отчет в БД
-    telemetry_data = {
-        "focusLost": payload.focusLost,
-        "mouseLeftWindow": payload.mouseLeftWindow,
-        "largePastes": payload.largePastes,
-        "codeHistory": payload.codeHistory
-    }
+    # 6. LLM Code Review (Анализ кода)
+    print("\n Запуск LLM Code Review...")
+    final_code = payload.codeHistory[-1] if payload.codeHistory else "# No code provided"
+    
+    task_text = "Python Task"
+    if payload.coding_task_id:
+        task_q = session.get(Question, payload.coding_task_id)
+        if task_q:
+            task_text = task_q.text
 
-    report = Report(
-        session_id=last_session.id,
-        final_score=final_score,
-        integrity_score=integrity_score,
-        summary_text="Автоматический анализ завершен.",
-        telemetry_json=json.dumps(telemetry_data)
+    try:
+        # Вызов LLM для оценки кода
+        review_res = generate_code_review(
+            lang="Python", 
+            question=task_text, 
+            ideal_answer="pass", 
+            user_answer=final_code,
+            ollama=ollama_client, 
+            redis_host=REDIS_HOST, 
+            redis_port=REDIS_PORT
+        )
+        func_score = int(review_res.get("functional_score", 5))
+        style_score = int(review_res.get("stylistic_score", 5))
+        critique = review_res.get("critique", "Решение принято.")
+        print(f" Оценка кода: Функционал={func_score}, Стиль={style_score}")
+    except Exception as e:
+        print(f" Ошибка LLM Review: {e}")
+        func_score, style_score, critique = 5, 5, "Не удалось провести автоматическую проверку кода."
+
+    # 7. Генерация Unit-тестов (для отчета)
+    tests_json = "{}"
+    try:
+        tests_res = generate_unittests(
+            lang="Python", 
+            task=task_text, 
+            code=final_code,
+            ollama=ollama_client, 
+            redis_host=REDIS_HOST, 
+            redis_port=REDIS_PORT
+        )
+        tests_json = json.dumps(tests_res)
+    except Exception as e:
+        print(f" Ошибка генерации тестов: {e}")
+
+    # 8. Расчет Integrity (Анти-чит)
+    integrity = 100
+    integrity -= (payload.focusLost * 5)
+    integrity -= (payload.mouseLeftWindow * 2)
+    if integrity < 0: integrity = 0
+
+    # 9. Финальная формула оценки
+    code_percent = ((func_score + style_score) / 20) * 100
+    
+    # ВЕСА: Код=40%, Теория=30%, Софты=20%, Античит=10%
+    final_grade = (
+        (code_percent * 0.4) + 
+        (theory_score_percent * 0.3) + 
+        (psy_score_percent * 0.2) + 
+        (integrity * 0.1)
     )
     
-    session.add(report)
+    print(f"\n ИТОГОВЫЙ РАСЧЕТ:")
+    print(f"   Code:    {code_percent:.1f}%")
+    print(f"   Theory:  {theory_score_percent:.1f}%")
+    print(f"   Psy:     {psy_score_percent:.1f}%")
+    print(f"   Cheat:   {integrity}%")
+    print(f" FINAL GRADE: {final_grade:.1f}/100")
+
+    # 10. Сохранение отчета в базу данных
+    last_session.status = "completed"
+    session.add(last_session)
+
+    telemetry_data = {
+        "psy_score": int(psy_score_percent),
+        "theory_score": int(theory_score_percent),
+        "code_score": int(code_percent),
+        "focus_lost": payload.focusLost,
+        "generated_tests": json.loads(tests_json)
+    }
+
+    # Проверка на существование отчета (update vs create)
+    existing_report = session.exec(select(Report).where(Report.session_id == session_id)).first()
+    
+    if existing_report:
+        print(" Обновляем старый отчет")
+        existing_report.final_score = int(final_grade)
+        existing_report.integrity_score = integrity
+        existing_report.summary_text = critique
+        existing_report.telemetry_json = json.dumps(telemetry_data)
+        session.add(existing_report)
+    else:
+        print(" Создаем новый отчет")
+        report = Report(
+            session_id=session_id,
+            final_score=int(final_grade),
+            integrity_score=integrity,
+            summary_text=critique,
+            telemetry_json=json.dumps(telemetry_data)
+        )
+        session.add(report)
+
     session.commit()
+    
 
     return {
-        "status": "completed", 
-        "finalScore": final_score, 
-        "integrityScore": integrity_score
+        "status": "completed",
+        "finalScore": int(final_grade),
+        "integrityScore": integrity,
+        "critique": critique
     }
 
 # 3. ПОЛУЧЕНИЕ СВОЕГО ОТЧЕТА (ДЛЯ КАНДИДАТА)
 @app.get("/api/my-report/{user_id}")
 def get_my_report(user_id: int, session: Session = Depends(get_session)):
-    # Ищем последнюю сессию с отчетом
-    last_session = session.exec(
-        select(TestSession)
-        .where(TestSession.user_id == user_id)
-        .order_by(TestSession.created_at.desc())
-    ).first()
+    sess = session.exec(select(TestSession).where(TestSession.user_id == user_id).order_by(TestSession.created_at.desc())).first()
+    
+    if sess and sess.report:
+        # Пытаемся достать детализацию баллов из JSON
+        try:
+            telemetry = json.loads(sess.report.telemetry_json)
+        except:
+            telemetry = {}
 
-    if not last_session or not last_session.report:
-        return {"ready": False}
-
-    report = last_session.report
-    return {
-        "ready": True,
-        "final_score": report.final_score,
-        "integrity_score": report.integrity_score,
-        "summary": report.summary_text
-    }
+        return {
+            "ready": True,
+            "final_score": sess.report.final_score,
+            "integrity_score": sess.report.integrity_score,
+            "summary": sess.report.summary_text,
+            "details": telemetry  # <--- ОТПРАВЛЯЕМ ДЕТАЛИ НА ФРОНТ
+        }
+    return {"ready": False}
 
 # ---------------- ROUTER CONNECT ------------------
 

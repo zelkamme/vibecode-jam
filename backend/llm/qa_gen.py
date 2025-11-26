@@ -1,5 +1,6 @@
-from .llm_api import cached_chat
-from .tools import parse_json_list, parse_response
+from backend.llm.llm_api import cached_chat
+from backend.llm.tools import parse_json_list  # <--- ТУТ ДРУГАЯ ФУНКЦИЯ
+from backend.llm.tools import parse_response
 
 
 def fill_theory_qa_gen_prompt(position, requirements, resume, que_num=5):

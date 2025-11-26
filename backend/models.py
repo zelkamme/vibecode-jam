@@ -18,15 +18,16 @@ class Vacancy(SQLModel, table=True):
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str
-    role: str = "candidate" # candidate / hr
+    role: str = "candidate"
     
-    # Связываем юзера с вакансией (если он кандидат)
     vacancy_id: Optional[int] = Field(default=None, foreign_key="vacancy.id")
     
-    # Уровень берем из вакансии, но можно хранить копию для удобства,
-    # или вычислять динамически. Для простоты храним тут:
     level: str 
     resume_path: Optional[str] = None  
+
+    # --- ДОБАВИТЬ ЭТУ СТРОКУ ---
+    llm_profile_json: Optional[str] = None  
+    # ---------------------------
 
     sessions: List["TestSession"] = Relationship(back_populates="user")
 

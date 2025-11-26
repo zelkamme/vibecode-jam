@@ -132,12 +132,14 @@ function CodingInterface({ onComplete }) {
     try {
       const response = await axios.post('http://localhost:8000/api/chat', {
         message: userInput,
-        history: chatHistory // Отправляем контекст
+        history: chatHistory, // Отправляем контекст
+        code_context: code,  // <-- Берем из стейта code (где хранится текст редактора)
+        task_id: taskId      // <-- Берем из стейта taskId
       });
       setChatHistory(prev => [...prev, response.data]);
     } catch (error) {
-       setChatHistory(prev => [...prev, { sender: 'ai', text: '_AI сейчас недоступен. Попробуйте позже._' }]);
-    }
+        console.error(error);
+        setChatHistory(prev => [...prev, { sender: 'ai', text: '_AI сейчас недоступен._' }]);    }
   };
 
   const handleFinish = async () => {
