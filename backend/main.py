@@ -144,8 +144,9 @@ class TaskCreateRequest(BaseModel):
 
 class RunCodeRequest(BaseModel):
     code: str
-    language: str
+    language: Optional[str] = None # Можно передать явно с фронта
     task_id: Optional[int] = None
+    user_id: Optional[int] = None  # <--- ВАЖНО: нужно знать, кто запускает
 
 class ChatMessage(BaseModel):
     message: str
@@ -595,22 +596,50 @@ def handle_coding_chat_assist(payload: ChatMessage, session: Session = Depends(g
 
     return {"sender": "ai", "text": ai_text}
     
-@app.get("/api/task/coding/{level}")
-def get_coding_task(level: str, session: Session = Depends(get_session)):
-    q = session.exec(
-        select(Question)
-        .where(Question.type == "coding")
-        .where(Question.level == level)
-    ).first()
+# backend/main.py
 
+@app.get("/api/task/coding/{level}")
+def get_coding_task(
+    level: str, 
+    user_id: Optional[int] = None, # <-- Принимаем ID пользователя
+    session: Session = Depends(get_session)
+):
+    target_tag = "python" # Дефолтный тег, если юзер не найден
+    
+    # 1. Если передан user_id, определяем язык по вакансии
+    if user_id:
+        user = session.get(User, user_id)
+        if user and user.vacancy_id:
+            vac = session.get(Vacancy, user.vacancy_id)
+            if vac:
+                # Простая логика маппинга: Вакансия "JavaScript" -> тег "javascript"
+                # Приводим к нижнему регистру для надежности
+                target_tag = vac.language.lower() 
+                print(f"👤 Юзер {user.username} (Вакансия: {vac.title}). Ищем задачи с тегом: {target_tag}")
+
+    # 2. Ищем задачу, совпадающую по УРОВНЮ и ТЕГУ
+    # Используем like, чтобы 'python' нашел 'python,pandas'
+    query = select(Question).where(Question.type == "coding") \
+                            .where(Question.level == level) \
+                            .where(Question.required_tag.contains(target_tag))
+    
+    # Берем первую попавшуюся (или можно random, если добавить func.random())
+    q = session.exec(query).first()
+
+    # 3. Если задачи под конкретный язык нет, ищем ЛЮБУЮ задачу этого уровня (Фолбек)
     if not q:
-        q = session.exec(select(Question).where(Question.type == "coding")).first()
+        print(f"⚠️ Задач с тегом {target_tag} для уровня {level} нет. Ищу любую задачу.")
+        q = session.exec(
+            select(Question)
+            .where(Question.type == "coding")
+            .where(Question.level == level)
+        ).first()
 
     if not q:
         return {
             "id": 0,
             "title": "Задач нет",
-            "description": "HR не добавил задачи.",
+            "description": "Для вашего уровня и языка задач пока не добавлено.",
             "files": []
         }
 
@@ -700,63 +729,106 @@ def get_candidate_detail(user_id: int, session: Session = Depends(get_session)):
             except:
                 pass
 
+    user_lang = "python"
+    if user.vacancy_id:
+        vac = session.get(Vacancy, user.vacancy_id)
+        if vac:
+            user_lang = vac.language
     return {
         "id": user.id,
         "name": user.username,
         "level": user.level,
+        "language": user_lang,
         **report_data
     }
 
 
 # ---------------- RUN CODE (DOCKER) ------------------
+LANGUAGE_CONFIG = {
+    "Python": {
+        "image": "python:3.12-alpine",
+        "file_name": "main.py",
+        "command": ["python", "/work/main.py"]
+    },
+    "JavaScript": {
+        "image": "node:18-alpine",
+        "file_name": "index.js",
+        "command": ["node", "/work/index.js"]
+    },
+    "Java": {
+        "image": "openjdk:17-jdk-slim",
+        "file_name": "Main.java",
+        # Java требует компиляции или запуска одного файла (с Java 11+)
+        "command": ["java", "/work/Main.java"] 
+    },
+    "C++": {
+        "image": "gcc:latest",
+        "file_name": "main.cpp",
+        # Компилируем и запускаем
+        "command": ["sh", "-c", "g++ -o /work/app /work/main.cpp && /work/app"]
+    },
+    "Go": {
+        "image": "golang:1.21-alpine",
+        "file_name": "main.go",
+        "command": ["go", "run", "/work/main.go"]
+    }
+}
 
 @router.post("/run-code")
 async def run_code(payload: RunCodeRequest, session: Session = Depends(get_session)):
-    files_to_send = []
-    env_to_use = "basic"
+    # По умолчанию Python
+    target_lang = "Python"
 
-    if payload.task_id:
+    # АЛГОРИТМ ВЫБОРА ЯЗЫКА:
+    # 1. Если передан user_id -> смотрим язык Вакансии
+    if payload.user_id:
+        user = session.get(User, payload.user_id)
+        if user and user.vacancy_id:
+            vac = session.get(Vacancy, user.vacancy_id)
+            if vac and vac.language in LANGUAGE_CONFIG:
+                target_lang = vac.language
+                print(f"🕵️ Язык определен по вакансии: {target_lang}")
+
+    # 2. (Опционально) Если задача требует Pandas/DataScience — перекрываем образ Python
+    # Это частный случай для Питона, оставляем для совместимости
+    env_override = None
+    if payload.task_id and target_lang == "Python":
         q = session.get(Question, payload.task_id)
-        if q:
-            if "pandas" in q.required_tag:
-                env_to_use = "data-science"
+        if q and "pandas" in q.required_tag:
+            env_override = "python:3.12-slim" # Образ с библиотеками
 
-            if q.files_json:
-                files_to_send = json.loads(q.files_json)
-                for f in files_to_send:
-                    if f["name"] == "main.py":
-                        f["content"] = payload.code
+    # Получаем конфиг для выбранного языка
+    config = LANGUAGE_CONFIG.get(target_lang, LANGUAGE_CONFIG["Python"])
+    
+    image_to_run = env_override if env_override else config["image"]
+    file_name = config["file_name"]
+    run_command = config["command"]
 
+    # Создаем временную папку и файл
     temp_dir = tempfile.mkdtemp()
-    source_path = os.path.join(temp_dir, "main.py")
+    source_path = os.path.join(temp_dir, file_name)
 
     with open(source_path, "w", encoding="utf-8") as f:
         f.write(payload.code)
 
-    env_map = {
-        "basic": "python:3.12-alpine",
-        "data-science": "python:3.12-slim"
-    }
-
-    image = env_map.get(env_to_use, "python:3.12-alpine")
-
     try:
         container = docker_client.containers.run(
-            image=image,
-            command=["python", "/work/main.py"],
+            image=image_to_run,
+            command=run_command,
             volumes={temp_dir: {"bind": "/work", "mode": "rw"}},
-            network_disabled=True,
+            network_disabled=True, # Без интернета (безопасность)
             detach=True,
             mem_limit="256m",
             cpu_period=100000,
             cpu_quota=50000,
-            stdout=True,
-            stderr=True,
             remove=True
         )
 
         exit_code = container.wait()
         logs = container.logs(stdout=True, stderr=True).decode()
+
+        # Очистка
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
         stdout = logs
         stderr = "" if exit_code["StatusCode"] == 0 else logs
@@ -764,6 +836,7 @@ async def run_code(payload: RunCodeRequest, session: Session = Depends(get_sessi
         return {"stdout": stdout, "stderr": stderr}
 
     except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         return {"stdout": "", "stderr": f"Docker error: {str(e)}"}
 
 
