@@ -3,12 +3,16 @@ from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 from datetime import datetime
 
-# 1. ВАКАНСИЯ (Новая сущность)
+# 1. ВАКАНСИЯ (Расширенная)
 class Vacancy(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    title: str       # Название: "Python Backend Developer"
-    level: str       # Уровень: "Junior", "Middle", "Senior", "Intern"
+    title: str       # Например: "Backend Python"
+    level: str       # Junior / Middle / Senior
+    language: str    # Python / JS / Go
+    skills: str      # "Docker, FastAPI, PostgreSQL" (строка через запятую)
+    salary_range: Optional[str] = None # "100k - 150k"
     description: Optional[str] = None
+    is_active: bool = Field(default=True) # <-- НОВОЕ ПОЛЕ (Открыта/Скрыта)
 
 # 2. ЮЗЕР
 class User(SQLModel, table=True):
@@ -22,7 +26,7 @@ class User(SQLModel, table=True):
     # Уровень берем из вакансии, но можно хранить копию для удобства,
     # или вычислять динамически. Для простоты храним тут:
     level: str 
-    
+    resume_path: Optional[str] = None  
     sessions: List["TestSession"] = Relationship(back_populates="user")
 
 # 3. КОНТЕЙНЕРЫ И ТЕГИ

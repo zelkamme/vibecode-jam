@@ -1,8 +1,7 @@
-// frontend/src/HrReport.jsx
-
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import { FaArrowLeft } from 'react-icons/fa';
 
 function HrReport() {
   const { candidateId } = useParams();
@@ -11,62 +10,48 @@ function HrReport() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // ЗАПРОС К БЭКЕНДУ
     axios.get(`http://localhost:8000/api/candidates/${candidateId}`)
       .then(response => {
         setCandidate(response.data);
         setLoading(false);
       })
       .catch(err => {
-        console.error("Ошибка:", err);
-        setError("Не удалось загрузить данные кандидата. Проверьте ID.");
+        setError("Ошибка загрузки");
         setLoading(false);
       });
   }, [candidateId]);
 
-  if (loading) return <div className="hr-report-page"><h2 style={{padding:'2rem', color:'white'}}>Загрузка данных...</h2></div>;
-  
-  if (error || !candidate) {
-    return (
-      <div className="hr-report-page">
-        <header className="hr-header">
-          <Link to="/hr/dashboard" className="back-link">← Назад к списку</Link>
-          <h1>Кандидат не найден</h1>
-        </header>
-        <div style={{padding:'2rem', color:'white', textAlign:'center'}}>
-            <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="hr-page"><h2 style={{color:'white'}}>Загрузка данных...</h2></div>;
+  if (error || !candidate) return <div className="hr-page"><h2 style={{color:'white'}}>Не найдено</h2></div>;
 
   const { name, level, status, score, integrity_score, telemetry } = candidate;
-  
-  // Цвета для Integrity Score
   const iScore = integrity_score || 100;
   const integrityColor = iScore < 50 ? '#e53935' : (iScore < 80 ? '#f57c00' : '#43a047');
 
   return (
-    <div className="hr-report-page">
+    <div className="hr-page">
       <header className="hr-header">
-        <Link to="/hr/dashboard" className="back-link">← Назад к списку</Link>
-        <h1>Отчет по кандидату</h1>
+        <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
+             <Link to="/hr/dashboard" className="back-link"><FaArrowLeft /> Назад</Link>
+             <h1 style={{margin:0}}>Отчет по кандидату</h1>
+        </div>
         <div className="candidate-info">
-          <h2>{name}</h2>
+          <span style={{fontSize:'1.2rem', fontWeight:'bold'}}>{name}</span>
           <span className="level-badge" style={{background: '#333', padding: '0.3rem 0.6rem', borderRadius:'4px', marginLeft:'1rem'}}>{level}</span>
         </div>
       </header>
       
-      <main className="hr-main">
+      <main className="hr-main" style={{marginTop:'2rem'}}>
+        {/* ИСПОЛЬЗУЕМ RESPONSIVE GRID */}
         <div className="report-grid">
           
-          {/* БЛОК 1: ОБЩИЕ РЕЗУЛЬТАТЫ */}
+          {/* КАРТОЧКА 1: ОСНОВНЫЕ РЕЗУЛЬТАТЫ */}
           <div className="report-section">
-            <h3>Результаты</h3>
-            <div className="report-card hr-card">
+            <h3 style={{color:'white', borderBottom:'1px solid #333', paddingBottom:'0.5rem'}}>Результаты</h3>
+            <div className="glass-card report-card">
               <div className="report-item">
-                <h4>Статус</h4>
-                <p>{status}</p>
+                <h4>Текущий статус</h4>
+                <p style={{fontWeight:'bold', color: status === 'Завершено' ? '#4caf50' : '#ff9800'}}>{status}</p>
               </div>
               <div className="report-item">
                 <h4>Общий балл</h4>
@@ -75,22 +60,30 @@ function HrReport() {
             </div>
           </div>
           
-          {/* БЛОК 2: АНТИЧИТ / ИНТЕГРИТИ */}
+          {/* КАРТОЧКА 2: АНТИЧИТ */}
           <div className="report-section">
-            <h3>Анализ честности (Anti-Cheat)</h3>
-            <div className="report-card hr-card">
+            <h3 style={{color:'white', borderBottom:'1px solid #333', paddingBottom:'0.5rem'}}>Anti-Cheat Анализ</h3>
+            <div className="glass-card report-card">
               <div className="report-item">
                 <h4 style={{ color: integrityColor }}>Integrity Score</h4>
                 <p className="score" style={{ color: integrityColor }}>{iScore}%</p>
-                
-                {telemetry ? (
-                  <ul className="integrity-details" style={{marginTop: '1rem', listStyle: 'none', padding:0}}>
-                    <li style={{marginBottom:'0.5rem'}}>👀 Потеря фокуса (Alt+Tab): <strong>{telemetry.focusLost || 0} раз</strong></li>
-                    <li style={{marginBottom:'0.5rem'}}>🐭 Уход мыши из окна: <strong>{telemetry.mouseLeftWindow || 0} раз</strong></li>
-                    <li style={{marginBottom:'0.5rem'}}>📋 Крупные вставки кода: <strong>{telemetry.largePastes || 0} раз</strong></li>
+              </div>
+              
+              <div style={{marginTop:'1rem'}}>
+                 {telemetry ? (
+                  <ul className="integrity-details" style={{listStyle: 'none', padding:0}}>
+                    <li style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}>
+                        <span>👀 Потеря фокуса:</span> <strong>{telemetry.focusLost || 0}</strong>
+                    </li>
+                    <li style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}>
+                        <span>🐭 Уход курсора:</span> <strong>{telemetry.mouseLeftWindow || 0}</strong>
+                    </li>
+                    <li style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}>
+                        <span>📋 Copy/Paste (Large):</span> <strong>{telemetry.largePastes || 0}</strong>
+                    </li>
                   </ul>
                 ) : (
-                  <p style={{opacity:0.5, fontSize:'0.9rem'}}>Нет данных телеметрии (кандидат еще не проходил тест)</p>
+                  <p style={{opacity:0.5, fontSize:'0.9rem'}}>Нет данных телеметрии</p>
                 )}
               </div>
             </div>
