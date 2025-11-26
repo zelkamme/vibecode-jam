@@ -33,8 +33,18 @@ def strip_fenced_lines(text: str) -> str:
     # Join the remaining lines back together.
     return "".join(filtered)
 
+def remove_think_tags(text):
+    # 1. Remove the tags and content (same as before)
+    pattern = r'<think>.*?</think>'
+    clean_text = re.sub(pattern, '', text, flags=re.DOTALL)
+    
+    # 2. Remove leading newlines (and other leading whitespace)
+    return clean_text #clean_text.lstrip()
+
 def parse_response(response: str, required_keys: set) -> Dict[str, Union[str, None]]:
     response = strip_fenced_lines(response)
+    response = remove_think_tags(response)
+    
     try:
         data = json.loads(response)
     except json.JSONDecodeError as exc:
@@ -82,6 +92,8 @@ def parse_json_list(s: str) -> List[Dict[str, Any]]:
     3. If it still fails, fall back to ``ast.literal_eval`` (Python literal).
     """
     s = strip_fenced_lines(s)
+    s = remove_think_tags(s)
+
     try:
         return json.loads(s)
     except json.JSONDecodeError:

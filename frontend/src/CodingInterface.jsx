@@ -174,7 +174,7 @@ function CodingInterface({ onComplete }) {
     setUserInput('');
     
     try {
-      const response = await axios.post('http://localhost:8000/api/chat', {
+      const response = await axios.post('/api/chat', {
         message: userInput,
         history: chatHistory,
         code_context: code,
@@ -198,7 +198,7 @@ function CodingInterface({ onComplete }) {
     }
 
     try {
-        const response = await axios.post('http://localhost:8000/api/analyze-integrity', {
+        const response = await axios.post('/api/analyze-integrity', {
             user_id: parseInt(currentUserId),
             focusLost: telemetry.current.focusLost,
             mouseLeftWindow: telemetry.current.mouseLeftWindow,

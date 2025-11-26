@@ -30,7 +30,7 @@ function TaskBuilder() {
   useEffect(() => {
     if (isEditMode) {
       setLoading(true);
-      axios.get(`http://localhost:8000/api/questions/${taskId}`)
+      axios.get(`/api/questions/${taskId}`)
         .then(res => {
           const data = res.data;
           
@@ -113,10 +113,10 @@ function TaskBuilder() {
 
     try {
       if (isEditMode) {
-        await axios.put(`http://localhost:8000/api/questions/${taskId}`, payload);
+        await axios.put(`/api/questions/${taskId}`, payload);
         alert("✅ Задача успешно обновлена!");
       } else {
-        await axios.post('http://localhost:8000/api/tasks', payload);
+        await axios.post('/api/tasks', payload);
         alert("✅ Задача создана!");
         setTask({ title: '', description: '', referenceAnswer: '', level: 'Intern', envId: 'basic' });
       }

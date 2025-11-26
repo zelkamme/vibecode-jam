@@ -1,9 +1,9 @@
-from backend.llm.llm_api import cached_chat
+from backend.llm.llm_api import common_llm_call
 from backend.llm.tools import parse_response
 
 
-def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_level="Junior"):
-    prompt = f"""Ты – высококвалифицированный ревьюер кода, проводящий техническое собеседование на должность {skill_level} {lang}-разработчик.  
+def fill_code_review_prompt(lang, question, ideal_answer, user_answer, position):
+    prompt = f"""Ты – высококвалифицированный ревьюер кода, проводящий техническое собеседование на должность {position} ({lang}).  
     Тебе передаётся следующая информация (в порядке перечисления):  
 
     1. Язык программирования – <LANGUAGE>. 
@@ -40,30 +40,19 @@ def fill_code_review_prompt(lang, question, ideal_answer, user_answer, skill_lev
     """
     return prompt
 
-def generate_code_review(lang, question, ideal_answer, user_answer, ollama, redis_host="localhost", redis_port=6379):
-    prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, redis_host)
 
-    stream = cached_chat(
-        client=ollama,
-        model='gemma3:12b',
-        messages=[{'role': 'user', 'content': prompt}],
-        redis_host=redis_host,
-        redis_port=redis_port,
-        stream=False,
-        illusion=False,
-        use_cache=True,
-    )
-    
-    result = []
-    for chunk in stream:
-        #print(chunk['message']['content'], end='', flush=True)
-        result.append(chunk['message']['content'])
-    
+def generate_code_review(lang, question, ideal_answer, user_answer, position, llm_api, redis_host="localhost", redis_port=6379):
+    """Код ревью - общая и стилистическая оценки, критика:
+    Вход язык, вопрос, эталонный код, код юзера
+    Выход: функциональная оценка, стилистическая оценка, критика
+    """
+    prompt = fill_code_review_prompt(lang, question, ideal_answer, user_answer, position)
+    result = common_llm_call(prompt, llm_api, redis_host, redis_port)
     result = parse_response(result[0], required_keys={"functional_score", "stylistic_score", "critique"})
     
     return result    
 
-def test_code_review(ollama, redis_host="localhost", redis_port=6379):
+def test_code_review(llm_api, redis_host="localhost", redis_port=6379):
     lang = "Python"
     question = "Напишите функцию, которая принимает список целых чисел и возвращает список без дубликатов, сохранив порядок."
     ideal_answer = """
@@ -79,4 +68,47 @@ def test_code_review(ollama, redis_host="localhost", redis_port=6379):
                 result.append(i)
         return result
     """
-    return generate_code_review(lang, question, ideal_answer, user_answer, ollama, redis_host, redis_port)
+    position = "Junior"
+    return generate_code_review(lang, question, ideal_answer, user_answer, position, llm_api, redis_host, redis_port)
+
+def fill_lang_detect_prompt(code):
+    prompt = f"""You are a highly qualified code reviewer - you have to output the programming language of the code provided to you in tags <CODE></CODE>.
+    You output data ONLY in this json format:
+    ```json
+    {{
+        "lang": "<the programming language of the code>",
+    }}
+    ```
+    <CODE>
+    {code}
+    </CODE>
+    """
+    return prompt
+
+def generate_lang_detect(code, llm_api, redis_host="localhost", redis_port=6379):
+    """Детект ЯП:
+    Вход: код
+    Выход: язык
+    """
+    prompt = fill_lang_detect_prompt(code)
+    result = common_llm_call(prompt, llm_api, redis_host, redis_port)
+    result = parse_response(result[0], required_keys={"lang"})
+    
+    return result 
+
+def test_lang_detect(llm_api, redis_host="localhost", redis_port=6379):
+    code = """
+    def unique_preserve_order(lst):
+        seen = set()
+        return [x for x in lst if not (x in seen or seen.add(x))]
+    """
+    code2 = """
+    def uniq(lst):
+        result = []
+        for i in lst:
+            if i not in result:
+                result.append(i)
+        return result
+    """
+
+    return generate_lang_detect(code, llm_api, redis_host, redis_port)

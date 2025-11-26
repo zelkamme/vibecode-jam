@@ -1,4 +1,5 @@
 // frontend/src/VacancyBuilder.jsx
+
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -21,7 +22,7 @@ function VacancyBuilder() {
     }
 
     try {
-        await axios.post('http://localhost:8000/api/vacancies', form);
+        await axios.post(`/api/vacancies`, form);
         alert("Вакансия успешно открыта!");
         navigate('/hr/dashboard');
     } catch (error) {

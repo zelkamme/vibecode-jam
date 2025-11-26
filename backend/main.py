@@ -20,7 +20,7 @@ from backend.models import User, Question, Report, TestSession, Vacancy, UserAns
 
 from backend.llm.qa_gen import generate_theory_qa, generate_theory_check
 from backend.llm.helper_ai import generate_helper_ai  
-from ollama import Client as OllamaClient # <--- ИСПРАВЛЕНО: Для работы с LLM (импорт из библиотеки ollama)
+from ollama import Client as OllamaClient #TODO: Исправить # <--- ИСПРАВЛЕНО: Для работы с LLM (импорт из библиотеки ollama)
 from backend.llm.code_review import generate_code_review
 from backend.llm.unit_tests_gen import generate_unittests
 # --- Добавь это после импортов ---
@@ -81,7 +81,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    #allow_origins=["http://0.0.0.0:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
