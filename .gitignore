@@ -1,0 +1,34 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node.js
+node_modules/
+dist/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/OS specific
+.idea/
+.vscode/
+.DS_Store
+
+# Frontend мусор
+node_modules/
+dist/
+.env
+.DS_Store
+
+# Backend мусор
+__pycache__/
+*.pyc
+venv/
+.venv/
+vibecode.db
+backend/uploads/
+# IDE мусор
+.vscode/
+.idea/

@@ -1,0 +1,660 @@
+/* frontend/src/App.css */
+
+/* --- ========================================== --- */
+/* --- 1. ПЕРЕМЕННЫЕ И ГЛОБАЛЬНЫЕ СТИЛИ --- */
+/* --- ========================================== --- */
+
+:root {
+  /* Цветовая палитра */
+  --bg-color: #121212;
+  --card-color: #1E1E1E;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --border-color: #000000;
+  
+  /* Текст */
+  --text-primary: #E0E0E0;
+  --text-secondary: #A0A0A0;
+  --text-accent: #FFFFFF;
+
+  /* Акценты */
+  --accent-green: #22c55e;
+  --t1-blue: #58a6ff; 
+  --t1-white: #ffffff;
+  
+  /* Доп. переменные */
+  --dark-bg: #1e1e1e;
+  --dark-border: #333;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-primary);
+  background: radial-gradient(ellipse at 50% 70%, #0e0e0e 0%, #292929 100%);
+  overflow-x: hidden; /* Убираем горизонтальный скролл страницы */
+}
+
+/* Эффект блика на фоне */
+.glare-effect {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  overflow: hidden; z-index: -1; pointer-events: none;
+}
+.glare-effect::before, .glare-effect::after {
+  content: ''; position: absolute; top: -150%; left: -50%;
+  width: 200px; height: 400%;
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.03), transparent);
+  transform: rotate(45deg);
+  animation: glare-animation 15s linear infinite;
+}
+.glare-effect::after { animation-delay: -7.5s; left: 25%; width: 100px; opacity: 0.7; }
+
+@keyframes glare-animation {
+  0% { transform: translate(-100%, 100%) rotate(45deg); }
+  100% { transform: translate(100%, -100%) rotate(45deg); }
+}
+
+/* Обёртки страниц */
+.app-wrapper {
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.centered-container {
+  display: flex; flex-direction: column; justify-content: center;
+  align-items: center; text-align: center; gap: 2rem;
+  width: 100%; max-width: 900px;
+}
+.centered-container h1 { font-size: 4rem; font-weight: 800; color: #fff; }
+.centered-container h2 { font-size: 2.5rem; font-weight: 700; color: #fff; }
+
+.main-container {
+  height: 100%; width: 100%;
+  display: flex; gap: 1rem;
+  background-color: #090a0f;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+/* --- ========================================== --- */
+/* --- 2. БАЗОВЫЕ UI КОМПОНЕНТЫ (Стекло, Кнопки) --- */
+/* --- ========================================== --- */
+
+/* Карточки */
+.glass-card, .login-card, .hr-card, .report-card, .quiz-container {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  padding: 2.5rem;
+  color: var(--text-primary);
+}
+
+/* 
+   FIX 1: Инпуты (Исправление поломанного поля пароля)
+   Мы применяем стиль не только к классу .glass-input, но и ко всем input внутри форм,
+   чтобы исправить ситуацию, если класс забыли добавить в JSX.
+*/
+.glass-input, 
+.registration-form input,
+.registration-form select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  padding: 0.8rem 1rem !important; /* Увеличил паддинг чтобы не были узкими */
+  border-radius: 8px;
+  margin-top: 0.5rem;
+  font-size: 1rem !important;
+  box-sizing: border-box;
+  outline: none;
+  appearance: none; /* Убирает нативные стили браузера */
+}
+.glass-input:focus, 
+.registration-form input:focus { 
+  border-color: var(--t1-blue) !important; 
+}
+.glass-input::placeholder,
+.registration-form input::placeholder { 
+  color: var(--text-secondary); 
+  opacity: 0.7;
+}
+
+.glass-input-small {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  width: 100px;
+}
+
+select.glass-input option, .registration-form select option {
+  background-color: #1e1e1e;
+  color: white;
+  padding: 10px;
+}
+textarea.glass-input { resize: none; min-height: 100px; }
+
+/* Кнопки */
+.big-button, .link-button, .answer-button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  backdrop-filter: blur(5px);
+  padding: 1rem 2rem;
+  font-size: 1.2rem; font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer; transition: all 0.2s ease;
+  text-align: center;
+  text-decoration: none;
+  display: inline-flex; justify-content: center; align-items: center;
+}
+.big-button:hover, .answer-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: #fff;
+  transform: translateY(-2px);
+}
+
+/* FIX 3: Кнопка НАЗАД (Исправление узкой кнопки) */
+.link-button {
+  background-color: transparent;
+  /* !important нужен, чтобы перебить инлайн стиль padding: '0.5rem 0' в JSX */
+  padding: 0.6rem 1.5rem !important; 
+  font-size: 1rem;
+  gap: 0.5rem; /* Отступ иконки от текста */
+  width: auto !important;
+  justify-content: center !important;
+}
+.link-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-primary);
+}
+
+.icon-button {
+  background: var(--t1-blue); border: none; color: white;
+  border-radius: 4px; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+
+.level-badge {
+  color: white; font-weight: bold; text-transform: uppercase;
+}
+
+/* --- ========================================== --- */
+/* --- 3. ЛОГИН И РЕГИСТРАЦИЯ --- */
+/* --- ========================================== --- */
+
+.login-container {
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 450px;
+  display: flex; flex-direction: column; gap: 1.5rem;
+  text-align: center;
+  padding: 3rem 2rem;
+}
+.login-card h1 { font-size: 2.5rem; margin: 0; color: #ececece0; }
+.login-card p { opacity: 0.7; margin: 0 0 1rem 0; }
+.login-buttons { display: flex; flex-direction: column; gap: 1rem; }
+.login-buttons .big-button { background-color: rgba(255, 255, 255, 0.15); }
+
+.registration-form {
+  display: flex; flex-direction: column; gap: 1rem;
+  width: 100%;
+}
+
+/* Drag & Drop Zone */
+.drop-zone {
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+}
+.drop-zone.active, .drop-zone:hover {
+  border-color: var(--t1-blue);
+  background: rgba(88, 166, 255, 0.1);
+}
+.upload-placeholder { display: flex; flex-direction: column; align-items: center; color: var(--text-secondary); }
+.file-info { display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: white; }
+.remove-file { background: none; border: none; color: #e53935; font-size: 1.2rem; cursor: pointer; }
+
+/* --- ========================================== --- */
+/* --- 4. КАНДИДАТ: ПСИХОЛОГИЯ И ТЕОРИЯ --- */
+/* --- ========================================== --- */
+
+.quiz-container { width: 100%; max-width: 700px; text-align: center; }
+.question-section { margin-bottom: 1.5rem; }
+.question-count { margin-bottom: 1rem; font-size: 1rem; color: var(--text-secondary); }
+.question-text { font-size: 1.8rem; font-weight: 500; color: #fff; }
+.answer-section { display: flex; flex-direction: column; gap: 1rem; }
+.answer-button { width: 100%; text-align: left; }
+.quiz-results { font-size: 1.5rem; margin: 2rem 0; }
+
+/* Theory Chat */
+.theory-chat-container {
+  width: 100%; max-width: 800px; height: 70vh;
+  display: flex; flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden;
+}
+.chat-messages-area {
+  flex-grow: 1; overflow-y: auto; padding: 1.5rem;
+  display: flex; flex-direction: column; gap: 1rem; text-align: left;
+}
+.chat-input-area {
+  padding: 1rem; background: rgba(0,0,0,0.2);
+  display: flex; gap: 0.5rem;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.typing { opacity: 0.6; font-style: italic; }
+
+/* --- ========================================== --- */
+/* --- 5. КАНДИДАТ: КОДИНГ (IDE) --- */
+/* --- ========================================== --- */
+
+.left-panel, .right-panel {
+  background-color: rgba(80, 80, 80, 0.8);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.left-panel { flex: 3; }
+.right-panel { flex: 2; }
+
+.split-80 {
+  height: 80%; flex: 0 0 80%; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.split-20 {
+  height: 20%; flex: 0 0 20%; min-height: 0;
+  border-top: 1px solid var(--glass-border);
+  background-color: #0d0d0d;
+  display: flex; flex-direction: column;
+}
+
+.editor-container { flex-grow: 1; }
+.controls {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(0,0,0,0.3);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.run-button {
+  background-color: var(--t1-blue); color: white;
+  border: none; padding: 6px 16px; cursor: pointer;
+  border-radius: 4px; font-weight: bold;
+}
+.run-button:hover { background-color: #313131; }
+.finish-button {
+  background-color: #616161; color: white;
+  border: none; padding: 6px 16px; cursor: pointer;
+  border-radius: 4px; font-weight: bold;
+  margin-left: 10px;
+}
+
+.output-container {
+  padding: 1rem;
+  font-family: 'Courier New', Courier, monospace;
+  white-space: pre-wrap;
+  overflow-y: auto; flex-grow: 1;
+  font-size: 0.9rem;
+}
+.output-container .stdout { color: #E0E0E0; }
+.output-container .stderr { color: #FF8A80; }
+
+.chat-container { display: flex; flex-direction: column; height: 100%; }
+.chat-messages { flex-grow: 1; padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.8rem; }
+.message {
+  padding: 0.6rem 1rem; border-radius: 12px;
+  max-width: 85%; line-height: 1.4; color: var(--dark-text);
+}
+.message.user {
+  background-color: var(--t1-blue); color: white;
+  align-self: flex-end; border-bottom-right-radius: 2px;
+}
+.message.ai {
+  background-color: var(--dark-border); align-self: flex-start;
+  border-bottom-left-radius: 2px;
+}
+.chat-input { display: flex; padding: 1rem; border-top: 1px solid var(--dark-border); gap: 0.5rem; }
+.chat-input input {
+  flex-grow: 1; padding: 0.8rem; border-radius: 4px;
+  border: 1px solid var(--dark-border);
+  background-color: var(--dark-bg); color: var(--dark-text);
+}
+.chat-input button {
+  padding: 0.5rem 1rem; border: none; border-radius: 4px;
+  background-color: var(--t1-blue); color: white; cursor: pointer;
+}
+
+/* --- ========================================== --- */
+/* --- 6. HR ЗОНА: ДАШБОРД И КОНСТРУКТОРЫ --- */
+/* --- ========================================== --- */
+
+/* FIX 2: HR Layout (Хедер улетал из-за padding на родителе) */
+.hr-page {
+  padding: 0; /* Убираем паддинг со страницы, чтобы хедер был во всю ширину */
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.hr-header {
+  width: 100%;
+  padding: 1.5rem 2rem; /* Оптимальные отступы внутри хедера */
+  background: rgba(97, 97, 97, 0.5);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--glass-border);
+  display: flex; justify-content: space-between; align-items: center;
+  color: #fff;
+  box-sizing: border-box;
+}
+.hr-header h1 { margin: 0; font-size: 1.5rem; color: var(--text-accent); }
+.logout-button { background: none; border: 1px solid #fff; color: #fff; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; }
+
+.back-link {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  /* Добавляем "рамку" и стиль кнопки */
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.back-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-3px); /* Небольшая анимация влево */
+  border-color: #fff;
+}
+
+/* Новый контейнер для контента HR, чтобы был отступ от краев экрана */
+.hr-main {
+  padding: 2rem 3rem; 
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.candidate-list-container { 
+  margin-top: 0; 
+  padding: 1.5rem; 
+}
+.candidate-list-container h3 {
+  font-size: 1.8rem; color: #fff; margin: 0 0 1.5rem 0;
+  padding-bottom: 1rem; border-bottom: 1px solid var(--glass-border);
+}
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 1rem 1.5rem; text-align: left;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-secondary); font-size: 0.9rem;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+th.sortable { cursor: pointer; user-select: none; position: relative; }
+th.sortable:hover { color: var(--text-accent); background: rgba(255,255,255,0.05); }
+th.sortable::after { content: '↕'; font-size: 0.8rem; margin-left: 5px; opacity: 0.3; }
+th.sortable.asc::after { content: '↑'; opacity: 1; }
+th.sortable.desc::after { content: '↓'; opacity: 1; }
+td {
+  padding: 1.2rem 1.5rem; text-align: left;
+  border-bottom: 1px solid var(--border-color); color: var(--text-primary);
+}
+.view-report-link { color: var(--t1-blue); text-decoration: none; font-weight: 600; }
+.no-candidates-cell { text-align: center; padding: 3rem; color: var(--text-secondary); font-style: italic; }
+
+/* Конструктор задач */
+.task-builder-container {
+  display: grid;
+  grid-template-columns: 480px 1fr;
+  gap: 2rem;
+  height: 90vh;
+  width: 100%; /* Исправлено для Full Width */
+  box-sizing: border-box;
+}
+.settings-panel {
+  display: flex; flex-direction: column; gap: 0.8rem;
+  height: 100%; overflow-y: auto; padding-right: 0.5rem;
+}
+.content-panel { display: flex; flex-direction: column; height: 100%; }
+.save-task-btn { margin-top: auto; width: 100%; }
+
+.task-type-tabs {
+  display: flex; background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px; padding: 4px; margin-bottom: 1rem;
+}
+.type-tab {
+  flex: 1; padding: 8px; text-align: center; cursor: pointer;
+  border-radius: 6px; color: #aaa; transition: all 0.2s;
+}
+.type-tab.active { background: var(--t1-blue); color: white; font-weight: bold; }
+
+.env-selector { display: flex; flex-direction: column; gap: 0.4rem; max-height: 110px; overflow-y: auto; }
+.env-card {
+  background: rgba(255,255,255,0.05); padding: 0.5rem;
+  border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+}
+.env-card.active { background: rgba(0, 161, 224, 0.2); border-color: #00A1E0; }
+.lib-tag {
+  display: inline-block; background: rgba(0,0,0,0.3);
+  padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; color: #aaa;
+}
+
+.file-tabs { display: flex; gap: 0.5rem; padding: 0.5rem; background: rgba(255,255,255,0.05); }
+.file-tab {
+  padding: 0.5rem 1rem; background: rgba(255,255,255,0.1);
+  border-radius: 6px 6px 0 0; cursor: pointer;
+  display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; opacity: 0.7;
+}
+.file-tab.active { background: #1e1e1e; opacity: 1; border-top: 2px solid #00A1E0; }
+.delete-icon { color: #ff5555; }
+
+/* --- ========================================== --- */
+/* --- 7. ОТЧЕТЫ (REPORTS) --- */
+/* --- ========================================== --- */
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem; width: 100%; box-sizing: border-box;
+}
+.report-section { display: flex; flex-direction: column; height: 100%; }
+.hr-card, .report-card { width: 100%; box-sizing: border-box; min-height: 200px; }
+
+.report-item {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 1.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.report-item:last-child { border-bottom: none; }
+.score { font-size: 1.8rem; font-weight: 700; color: #fff; }
+
+.responsive-report-container {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  overflow-y: auto; overflow-x: hidden;
+  backdrop-filter: blur(10px);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 3rem 1rem; box-sizing: border-box; z-index: 10000;
+}
+.report-header-section { text-align: center; margin-bottom: 3rem; max-width: 800px; }
+.report-title { font-size: 3rem; margin-bottom: 0.5rem; color: #fff; }
+.report-subtitle { opacity: 0.6; font-size: 1.1rem; color: #ccc; }
+
+.stats-row {
+  display: flex; flex-direction: row; justify-content: center;
+  align-items: stretch; gap: 2rem;
+  width: 100%; max-width: 1400px; margin-bottom: 2rem; flex-wrap: wrap;
+}
+.result-card {
+  flex: 1; min-width: 320px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  padding: 2.5rem 1.5rem; border-radius: 20px;
+  display: flex; flex-direction: column;
+  align-items: center; text-align: center; justify-content: center;
+  transition: transform 0.2s;
+}
+.result-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.summary-card-full {
+  width: 100%; max-width: 1400px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 3rem; border-radius: 20px;
+  box-sizing: border-box; margin-bottom: 3rem; text-align: left;
+}
+.restart-btn { width: 100%; max-width: 350px; margin-bottom: 3rem; }
+
+/* --- ========================================== --- */
+/* --- 8. МОДАЛЬНЫЕ ОКНА И ПРОЧЕЕ --- */
+/* --- ========================================== --- */
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 1000; padding: 1rem;
+}
+.modal-content {
+  background: #1E1E1E;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  width: 100%; max-width: 700px; max-height: 85vh;
+  overflow-y: auto; padding: 2rem; position: relative;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+.close-modal-btn {
+  position: absolute; top: 1rem; right: 1rem;
+  background: none; border: none; color: #aaa; font-size: 1.5rem; cursor: pointer;
+}
+.task-preview-item {
+  background: rgba(255,255,255,0.05);
+  padding: 1rem; margin-bottom: 1rem;
+  border-radius: 8px; border-left: 3px solid var(--t1-blue);
+}
+
+.mermaid { max-height: 60vh; width: 100%; }
+.mermaid .nodeLabel { color: #000 !important; }
+
+/* Адаптив для мобильных */
+@media (max-width: 768px) {
+  .hr-page, .hr-header, .login-container { padding: 1rem !important; }
+  .hr-main { padding: 1rem !important; }
+  .report-grid { grid-template-columns: 1fr; }
+  .task-builder-container { grid-template-columns: 1fr; height: auto; }
+  .settings-panel { padding-right: 0; overflow: visible; }
+  .split-80, .split-20 { height: 50%; flex: 0 0 50%; }
+}
+
+/* --- СТИЛИ ДЛЯ РЕГИСТРАЦИИ (НОВЫЕ) --- */
+
+.registration-content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 2rem;
+    text-align: left;
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .registration-content-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.vacancies-grid-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Карточка выбора вакансии */
+.vacancy-select-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.vacancy-select-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.vacancy-select-card.active {
+    background: rgba(88, 166, 255, 0.15);
+    border-color: #58a6ff;
+    box-shadow: 0 0 10px rgba(88, 166, 255, 0.2);
+}
+
+.vac-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.vac-header h4 { margin: 0; color: white; font-size: 1.1rem; }
+
+.vac-badges {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+.badge-level { background: #333; font-size: 0.75rem; padding: 2px 6px;  color: #ddd; }
+.badge-lang { background: #005bb5; font-size: 0.75rem; padding: 2px 6px;  color: white; }
+
+.vac-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: #bbb;
+}
+.vac-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Скроллбар для списка вакансий */
+.vacancies-grid-select::-webkit-scrollbar { width: 6px; }
+.vacancies-grid-select::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
